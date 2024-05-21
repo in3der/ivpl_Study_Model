@@ -297,7 +297,7 @@ lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', facto
 mean = torch.tensor([0.485, 0.456, 0.406], device=torch.device('cuda'))
 std = torch.tensor([0.229, 0.224, 0.225], device=torch.device('cuda'))
 # 훈련 함수
-epochs = 35
+epochs = 5
 def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=epochs, topk=(5,)):
     train_losses = []
     val_losses = []
@@ -317,10 +317,7 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=epochs, to
                 inputs, labels = inputs.to(device), labels.to(device)   # GPU로 이미지, 라벨 넘김
 
                 # 입력 이미지 Normalize 수행
-                # for i in range(inputs.size(0)):
-                #     inputs[i] = transforms.Normalize(mean, std)(inputs[i])
-                inputs = transforms.Normalize(mean, std)(inputs)
-                #inputs = (inputs - mean[:, None, None]) / std[:, None, None]  # 정규화 연산
+                #inputs = transforms.Normalize(mean, std)(inputs)
 
                 optimizer.zero_grad()
                 outputs = model(inputs)
@@ -371,8 +368,9 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=epochs, to
         #lr_scheduler.step()
         lr_scheduler.step(val_loss) # ReduceLROnPlateau를 쓰는 경우
 
-        # 현재 학습률 출력
-        print(f"Epoch {epoch + 1}: learning rate = {lr_scheduler.get_last_lr()[0]}")
+        # 현재 학습률을 출력
+        current_lr = optimizer.param_groups[0]['lr']
+        print(f"Epoch {epoch + 1}: learning rate = {current_lr}")
 
     print('Training complete')
     return train_losses, val_losses, train_accuracies, val_accuracies
@@ -387,10 +385,7 @@ def evaluate_model(model, criterion, data_loader, device):
             inputs, labels = inputs.to(device), labels.to(device)
 
             # 입력 이미지를 Float32로 변환하기 전에 Normalize 수행
-            # for i in range(inputs.size(0)):
-            #     inputs[i] = transforms.Normalize(mean, std)(inputs[i])
-            inputs = transforms.Normalize(mean, std)(inputs)
-            #inputs = (inputs - mean[:, None, None]) / std[:, None, None]  # 정규화 연산
+            #inputs = transforms.Normalize(mean, std)(inputs)
 
             outputs = model(inputs)
             loss = criterion(outputs, labels)
@@ -425,10 +420,8 @@ with tqdm(total=len(test_loader), unit="batch", ncols=150, desc="Testing") as pb
             inputs, labels = inputs.to(device), labels.to(device)
 
             # 입력 이미지를 Float32로 변환하기 전에 Normalize 수행
-            # for i in range(inputs.size(0)):
-            #     inputs[i] = transforms.Normalize(mean, std)(inputs[i])
-            inputs = transforms.Normalize(mean, std)(inputs)
-            #inputs = (inputs - mean[:, None, None]) / std[:, None, None]  # 정규화 연산
+            #inputs = transforms.Normalize(mean, std)(inputs)
+
 
             outputs = model(inputs.float())
             loss = criterion(outputs, labels)
@@ -445,9 +438,9 @@ test_accuracy = correct / total
 print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.4f}")
 
 # 모델 저장
-torch.save(model, os.path.join(logs_dir+'/model', 'model.pth'))
+torch.save(model, os.path.join(logs_dir+'/model', 'model.pth'.format(epochs)))
 # 가중치 저장
-torch.save(model.state_dict(), os.path.join(logs_dir+'/model', 'model_weights.pth'))
+torch.save(model.state_dict(), os.path.join(logs_dir+'/model', 'model_weights.pth'.format(epochs)))
 # 체크포인트 저장
 checkpoint = {
     'epoch': epochs,
