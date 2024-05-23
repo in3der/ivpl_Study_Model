@@ -297,7 +297,7 @@ lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', facto
 mean = torch.tensor([0.485, 0.456, 0.406], device=torch.device('cuda'))
 std = torch.tensor([0.229, 0.224, 0.225], device=torch.device('cuda'))
 # 훈련 함수
-epochs = 5
+epochs = 28
 def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=epochs, topk=(5,)):
     train_losses = []
     val_losses = []
@@ -317,7 +317,7 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=epochs, to
                 inputs, labels = inputs.to(device), labels.to(device)   # GPU로 이미지, 라벨 넘김
 
                 # 입력 이미지 Normalize 수행
-                #inputs = transforms.Normalize(mean, std)(inputs)
+                inputs = transforms.Normalize(mean, std)(inputs)
 
                 optimizer.zero_grad()
                 outputs = model(inputs)
@@ -364,7 +364,7 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=epochs, to
         # Learning rate 조정
         lr_scheduler.step(val_loss)
 
-        # 에포크가 끝날 때마다 스케줄러를 업데이트 #cond a StepLR 쓰는 경우
+        # 에포크가 끝날 때마다 스케줄러를 업데이트 # StepLR 쓰는 경우
         #lr_scheduler.step()
         lr_scheduler.step(val_loss) # ReduceLROnPlateau를 쓰는 경우
 
@@ -385,7 +385,7 @@ def evaluate_model(model, criterion, data_loader, device):
             inputs, labels = inputs.to(device), labels.to(device)
 
             # 입력 이미지를 Float32로 변환하기 전에 Normalize 수행
-            #inputs = transforms.Normalize(mean, std)(inputs)
+            inputs = transforms.Normalize(mean, std)(inputs)
 
             outputs = model(inputs)
             loss = criterion(outputs, labels)
@@ -420,7 +420,7 @@ with tqdm(total=len(test_loader), unit="batch", ncols=150, desc="Testing") as pb
             inputs, labels = inputs.to(device), labels.to(device)
 
             # 입력 이미지를 Float32로 변환하기 전에 Normalize 수행
-            #inputs = transforms.Normalize(mean, std)(inputs)
+            inputs = transforms.Normalize(mean, std)(inputs)
 
 
             outputs = model(inputs.float())
