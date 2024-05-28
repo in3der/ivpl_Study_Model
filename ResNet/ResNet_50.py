@@ -49,154 +49,6 @@ train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_worke
 val_loader = DataLoader(val_dataset, batch_size=128, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
 test_loader = DataLoader(test_dataset, batch_size=128, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
 
-# # 이미지 잘 가져왔는지 확인
-# print(train_loader)
-# batch = next(iter(train_loader))  # 첫 번째 배치 가져오기
-# images, labels = batch  # 이미지와 레이블 분리
-# print("Batch size:", images.size(0))  # 배치 크기 확인
-# print("Image size:", images.size()[1:])  # 이미지 크기 확인
-# print("Image data type:", images.dtype)  # 이미지 데이터 타입 확인
-# # 이미지를 넘파이 배열로 변환
-# image_grid = torchvision.utils.make_grid(images, nrow=8, padding=2, normalize=True)  # 이미지 그리드 생성
-# # 이미지를 텐서에서 넘파이 배열로 변환
-# image_np = image_grid.numpy()
-# # 이미지 시각화
-# plt.figure(figsize=(15, 15))
-# plt.imshow(np.transpose(image_np, (1, 2, 0)))
-# plt.axis('off')
-# plt.show()
-
-
-# 모델 정의
-# Residual Block 정의
-# class ResidualBlock(nn.Module):
-#     def __init__(self, in_channels, out_channels):
-#         super(ResidualBlock, self).__init__()
-#         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=1, bias=True)
-#         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, stride=1, bias=True)
-#         self.bn1 = nn.BatchNorm2d(out_channels)
-#         self.bn2 = nn.BatchNorm2d(out_channels)
-#         self.relu = nn.ReLU(inplace=True)
-#
-#     def forward(self, x):
-#         identity = x
-#         out = self.conv1(x)
-#         out = self.bn1(out)
-#         out = self.relu(out)
-#         out = self.conv2(out)
-#         out = self.bn2(out)
-#         out += identity   # identity
-#         out = self.relu(out)
-#         return out
-# # class Bottleneck(nn.Module):
-# #     def __init__(self, in_channels, out_channels):
-# #         super(Bottleneck, self).__init__()
-# # class ResNet34(nn.Module):
-# #     def __init__(self, layers, num_classes=1000):
-# #         super(ResNet34, self).__init__()
-# #         self.layer1 = nn.Sequential(
-# #             nn.Conv2d(3, 64, 7, 2, 3),
-# #             nn.BatchNorm2d(64),
-# #             nn.ReLU(inplace=True),
-# #             nn.MaxPool2d(3, 2, 1)
-# #         )
-# #         self.layer2 = self.make_layer(64, 64, layers[0])
-# #         self.layer3 = self.make_layer(64, 128, layers[1], stride=1)
-# #         self.layer4 = self.make_layer(128, 256, layers[2], stride=1)
-# #         self.layer5 = self.make_layer(256, 512, layers[3], stride=1)
-# #         self.avg_pool = nn.AvgPool2d( 2, 1)
-# #         self.fc = nn.Linear(1548800, num_classes)
-# #
-# #     def make_layer(self, in_channels, out_channels, blocks, stride=1):
-# #         layers = []
-# #         layers.append(ResidualBlock(in_channels, out_channels))
-# #         for _ in range(1, blocks):
-# #             layers.append(ResidualBlock(out_channels, out_channels))
-# #         return nn.Sequential(*layers)
-# #
-# #     def forward(self, x):
-# #         out = self.layer1(x)    # 7X7(64)conv, 3X3 maxpool
-# #         out = self.layer2(out)  # 3X3(64)conv 3개
-# #         out = self.layer3(out)  # 3X3(128)conv 4개
-# #         out = self.layer4(out)  # 3X3(256)conv 6개
-# #         out = self.layer5(out)  # 3X3(512)conv 3개
-# #         out = self.avg_pool(out)    # avg pool
-# #         out = out.view(out.size(0), -1)   # 1000-d fc
-# #         out = self.fc(out)  # softmax
-# #         return out  # FLOPs: 3.6X10^9
-# # class ResidualBlock(nn.Module):
-# #     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
-# #         super(ResidualBlock, self).__init__()
-# #         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
-# #         self.bn1 = nn.BatchNorm2d(out_channels)     # Conv, Relu 사이 BN
-# #         self.relu = nn.ReLU(inplace=True)
-# #         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
-# #         self.bn2 = nn.BatchNorm2d(out_channels)     # Conv, Relu 사이 BN
-# #         self.relu = nn.ReLU(inplace=True)
-# #         self.downsample = downsample
-# #
-# #     def forward(self, x):
-# #         residual = x
-# #         out = self.conv1(x)
-# #         out = self.bn1(out)
-# #         out = self.relu(out)
-# #         out = self.conv2(out)
-# #         out = self.bn2(out)
-# #         if self.downsample:
-# #             residual = self.downsample(x)
-# #         out += residual
-# #         out = self.relu(out)
-# #         return out
-#
-#
-# # ResNet 모델 정의
-# class ResNet34(nn.Module):
-#     def __init__(self, block, layers, num_classes=1000):
-#         super(ResNet34, self).__init__()
-#         self.in_channels = 64
-#         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
-#         self.bn1 = nn.BatchNorm2d(64)
-#         self.relu = nn.ReLU(inplace=True)
-#         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-#         self.layer1 = self.make_layer(block, 64, layers[0])
-#         self.layer2 = self.make_layer(block, 128, layers[1], stride=2)
-#         self.layer3 = self.make_layer(block, 256, layers[2], stride=2)
-#         self.layer4 = self.make_layer(block, 512, layers[3], stride=2)
-#         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-#         self.fc = nn.Linear(512, num_classes)
-#
-#         for m in self.modules():    # 초기화
-#             if isinstance(m, nn.Conv2d):    # conv layer라면
-#                 m.weight.data.normal_(0.0)  # 가중치 0으로 초기화
-#
-#     def make_layer(self, block, out_channels, blocks, stride=1):
-#         downsample = None
-#         if stride != 1 or self.in_channels != out_channels:
-#             downsample = nn.Sequential(
-#                 nn.Conv2d(self.in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-#                 nn.BatchNorm2d(out_channels)
-#             )
-#         layers = []
-#         layers.append(block(self.in_channels, out_channels, stride, downsample))
-#         self.in_channels = out_channels
-#         for _ in range(1, blocks):
-#             layers.append(block(out_channels, out_channels))
-#         return nn.Sequential(*layers)
-#
-#     def forward(self, x):
-#         x = self.conv1(x)
-#         x = self.bn1(x)
-#         x = self.relu(x)
-#         x = self.maxpool(x)
-#         x = self.layer1(x)
-#         x = self.layer2(x)
-#         x = self.layer3(x)
-#         x = self.layer4(x)
-#         x = self.avgpool(x)
-#         x = x.view(x.size(0), -1)
-#         x = self.fc(x)
-#         return x
-
 class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(BasicBlock, self).__init__()
@@ -225,8 +77,46 @@ class BasicBlock(nn.Module):
         out = self.relu(out)
         return out
 
+class Bottleneck(nn.Module):
+    expansion = 1
 
-#class BottleNeck(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+        super(Bottleneck, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.conv3 = nn.Conv2d(out_channels, out_channels * self.expansion, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(out_channels * self.expansion)
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+
+        # He initialization 적용
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
+        out = self.relu(out)
+
+        return out
 
 class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=1000, ):
@@ -238,7 +128,7 @@ class ResNet(nn.Module):
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, 2, 1),  # 3X3 max pool, stride 2
         )
-        self.layer2 = self.make_layer(block, 64, layers[0])
+        self.layer2 = self.make_layer(block, 64, layers[0], stride = 1)
         self.layer3 = self.make_layer(block, 128, layers[1], stride = 2)   # downsampling 수행 시 pooling사용 X, stride2인 conv filter 사용
         self.layer4 = self.make_layer(block, 256, layers[2], stride = 2)
         self.layer5 = self.make_layer(block, 512, layers[3], stride = 2)
@@ -275,8 +165,12 @@ def resnet34():
     model = ResNet(BasicBlock, [3, 4, 6, 3])
     return model
 
+def resnet50():
+    model = ResNet(Bottleneck, [3, 4, 6, 3])
+    return model
+
 # 모델 인스턴스 생성
-model = resnet34()
+model = resnet50()
 
 # 모델을 GPU로 이동
 model = model.to(device)
@@ -291,7 +185,7 @@ summary(model, input_size=(3, 224, 224))
 # 손실 함수 및 optimizer 설정
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.0001)
-lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=4, verbose=True, min_lr=0.0001)
+lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True, min_lr=0.0001)
 #lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.1)
 
 mean = torch.tensor([0.485, 0.456, 0.406], device=torch.device('cuda'))
