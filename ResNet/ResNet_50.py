@@ -25,17 +25,12 @@ writer = SummaryWriter(logs_dir)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
-# Normalize를 위한 평균과 표준편차
-# mean = [0.485, 0.456, 0.406]
-# std = [0.229, 0.224, 0.225]
-
 # 데이터 전처리 및 augmentation
 data_transforms = transforms.Compose([
     transforms.Resize((256, 256)),
     transforms.RandomCrop(224),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
-    #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
 # 데이터셋 로드
@@ -180,13 +175,13 @@ from torchsummary import summary
 import matplotlib.pyplot as plt
 # 모델 요약 정보 출력
 summary(model, input_size=(3, 224, 224))
+print(model)
 
 
 # 손실 함수 및 optimizer 설정
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.0001)
 lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True, min_lr=0.0001)
-#lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.1)
 
 mean = torch.tensor([0.485, 0.456, 0.406], device=torch.device('cuda'))
 std = torch.tensor([0.229, 0.224, 0.225], device=torch.device('cuda'))
