@@ -40,9 +40,9 @@ val_dataset = datasets.ImageFolder(os.path.join(data_dir, 'val'), transform=data
 test_dataset = datasets.ImageFolder(os.path.join(data_dir, 'test'), transform=data_transforms)
 
 # 데이터 로더
-train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
-val_loader = DataLoader(val_dataset, batch_size=128, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
-test_loader = DataLoader(test_dataset, batch_size=128, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
+val_loader = DataLoader(val_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
+test_loader = DataLoader(test_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
 
 class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
@@ -73,7 +73,7 @@ class BasicBlock(nn.Module):
         return out
 
 class Bottleneck(nn.Module):
-    expansion = 1
+    expansion = 4
 
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(Bottleneck, self).__init__()
@@ -81,8 +81,8 @@ class Bottleneck(nn.Module):
         self.bn1 = nn.BatchNorm2d(out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
-        self.conv3 = nn.Conv2d(out_channels, out_channels * self.expansion, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(out_channels * self.expansion)
+        self.conv3 = nn.Conv2d(out_channels, out_channels * 4, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(out_channels * 4)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
 
@@ -105,8 +105,8 @@ class Bottleneck(nn.Module):
         out = self.conv3(out)
         out = self.bn3(out)
 
-        if self.downsample is not None:
-            identity = self.downsample(x)
+        if self.downsample is not None:     # Identitiy mapping의 크기를 맞춰 주기 위하여 1X1 conv layer 추가
+           identity = self.downsample(x)
 
         out += identity
         out = self.relu(out)
@@ -128,12 +128,12 @@ class ResNet(nn.Module):
         self.layer4 = self.make_layer(block, 256, layers[2], stride = 2)
         self.layer5 = self.make_layer(block, 512, layers[3], stride = 2)
         self.avgpool = nn.AdaptiveAvgPool2d(1)  # AdaptiveAvgPool2D에 1을 넣어 GlobalAveragePooling2D처럼 활용
-        self.fc = nn.Linear(512 * 1, num_classes)  # 수정된 부분: expansion=1로 설정
+        self.fc = nn.Linear(512 * 4, num_classes)  # ResNet34: expansion=1, ResNet50: expansion=4
 
-    def make_layer(self, block, red_channels, blocks, stride=1, expansion=1):  # map size 맞추어 리스트 안 element 수에 맞게 layer 생성
+    def make_layer(self, block, red_channels, blocks, stride=1, expansion=4):  # map size 맞추어 리스트 안 element 수에 맞게 layer 생성
         downsample = None
         if stride != 1 or self.in_channels != red_channels * expansion: # stride 2인 경우 downsampling
-            downsample = nn.Sequential(
+            downsample = nn.Sequential(     # identity mapping 크기 맞추기 위한 conv 1X1 layer
                 nn.Conv2d(self.in_channels, red_channels * expansion, kernel_size=1, stride=stride),
                 nn.BatchNorm2d(red_channels * expansion),
             )
