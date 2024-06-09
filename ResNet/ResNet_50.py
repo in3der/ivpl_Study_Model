@@ -30,6 +30,12 @@ data_transforms = transforms.Compose([
     transforms.Resize((256, 256)),
     transforms.RandomCrop(224),
     transforms.RandomHorizontalFlip(),
+    
+    ## 추가
+    transforms.ColorJitter(brightness=0.1, contrast=0.05, saturation=0.05, hue=0.1),  # 색상 조절
+    transforms.RandomRotation(10),  # 이미지 회전
+    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # 이미지 이동
+    
     transforms.ToTensor(),
 ])
 
