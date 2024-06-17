@@ -30,12 +30,6 @@ data_transforms = transforms.Compose([
     transforms.Resize((256, 256)),
     transforms.RandomCrop(224),
     transforms.RandomHorizontalFlip(),
-    
-    ## 추가
-    transforms.ColorJitter(brightness=0.1, contrast=0.05, saturation=0.05, hue=0.1),  # 색상 조절
-    transforms.RandomRotation(10),  # 이미지 회전
-    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # 이미지 이동
-    
     transforms.ToTensor(),
 ])
 
@@ -47,7 +41,7 @@ test_dataset = datasets.ImageFolder(os.path.join(data_dir, 'test'), transform=da
 
 # 데이터 로더
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
+val_loader = DataLoader(val_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)S
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
 
 class BasicBlock(nn.Module):
