@@ -1,4 +1,3 @@
-from Cells_2 import NormalCell, ReductionCell
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -26,9 +25,9 @@ class SepConv2d(nn.Module): # Separable Convolution 2D, 논문 Appendix.A.4. 참
         x = self.relu(x)
         x = self.depthwise(x)
         x = self.pointwise(x)
-        x = self.relu(x)
-        x = self.depthwise(x)
-        x = self.pointwise(x)
+        #x = self.relu(x)
+        #x = self.depthwise(x)
+        #x = self.pointwise(x)
         return x
 
 class Resize(nn.Module):
@@ -152,10 +151,10 @@ transform = transforms.Compose([
 ])
 
 train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=2)
 
 test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=4)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=2)
 
 epochs = 10
 criterion = nn.CrossEntropyLoss()
@@ -168,7 +167,7 @@ model.train()
 for epoch in range(epochs):
     with tqdm(total=len(train_loader), desc=f"Epoch {epoch+1}/{epochs}", unit="batch") as pbar:
         for i, (inputs, targets) in enumerate(train_loader):
-            inputs, targets = inputs.to(device), targets.to(device)  # Move tensors to GPU
+            inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, targets)
@@ -183,7 +182,7 @@ for epoch in range(epochs):
     with torch.no_grad():
         with tqdm(total=len(test_loader), desc=f"Evaluating", unit="batch") as pbar:
             for inputs, targets in test_loader:
-                inputs, targets = inputs.to(device), targets.to(device)  # Move tensors to GPU
+                inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)
                 _, predicted = outputs.max(1)
                 total += targets.size(0)
