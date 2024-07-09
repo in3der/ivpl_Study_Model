@@ -47,14 +47,15 @@ class NormalCell(nn.Module):
         self.SepConv3x3 = SepConv2d(out_channels, out_channels, kernel=3, stride=1, padding=1)
         self.SepConv5x5 = SepConv2d(out_channels, out_channels, kernel=5, stride=1, padding=2)
         self.Avg3x3 = AvgPool2d(kernel_size=3, stride=1, padding=1)
+        self.bn_in = nn.BatchNorm2d(in_channels, eps=0.001, momentum=0.1)
         self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.1)
         self.relu = nn.ReLU()
 
     def forward(self, cur, prev):
         # h_j = cur(현재 hidden state)
         # h_{j-1} = prev(revious)(이전 hidden state)
-        cur = self.relu(self.prev1X1(self.bn(cur)))
-        prev = self.relu(self.prev1X1(self.bn(prev)))
+        cur = self.relu(self.prev1X1(self.bn_in(cur)))
+        prev = self.relu(self.prev1X1(self.bn_in(prev)))
         b0 = self.SepConv3x3(cur) + cur
         b1 = self.SepConv3x3(prev) + self.SepConv5x5(prev)
         b2 = self.Avg3x3(cur) + prev
@@ -81,11 +82,12 @@ class ReductionCell(nn.Module):
         self.Max3x3 = MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.Conv1x1 = nn.Conv2d(in_channels//3, out_channels, kernel_size=1, stride=1)
         self.bn = nn.BatchNorm2d(in_channels//3, eps=0.001, momentum=0.1)
+        self.bn_in = nn.BatchNorm2d(in_channels, eps=0.001, momentum=0.1)
         self.relu = nn.ReLU()
 
     def forward(self, cur, prev):
-        cur = self.relu(self.prev1X1(self.bn(cur)))
-        prev = self.relu(self.prev1X1(self.bn(prev)))
+        cur = self.relu(self.prev1X1(self.bn_in(cur)))
+        prev = self.relu(self.prev1X1(self.bn_in(prev)))
         b0 = self.SepConv7x7(prev) + self.SepConv5x5(cur)
         b1 = self.relu(self.Conv1x1(self.bn(self.Max3x3(cur)))) + self.SepConv7x7(prev)
         b2 = self.relu(self.Conv1x1(self.bn(self.Avg3x3(cur)))) + self.SepConv5x5(prev)
@@ -165,16 +167,14 @@ train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_worker
 test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=4)
 
-epochs = 10
+epochs = 20
 
 # 손실 함수 및 optimizer 설정
 criterion = nn.CrossEntropyLoss()
 from torch.optim.lr_scheduler import CosineAnnealingLR
-optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
+optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
 lr_scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
 
-# 훈련 함수
-epochs = 28
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
