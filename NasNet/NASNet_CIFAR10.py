@@ -89,9 +89,12 @@ class ReductionCell(nn.Module):
         cur = self.relu(self.prev1X1(self.bn_in(cur)))
         prev = self.relu(self.prev1X1(self.bn_in(prev)))
         b0 = self.SepConv7x7(prev) + self.SepConv5x5(cur)
-        b1 = self.relu(self.Conv1x1(self.bn(self.Max3x3(cur)))) + self.SepConv7x7(prev)
-        b2 = self.relu(self.Conv1x1(self.bn(self.Avg3x3(cur)))) + self.SepConv5x5(prev)
-        b3 = self.relu(self.Conv1x1(self.bn(self.Max3x3(cur)))) + self.SepConv3x3(b0)
+        b1 = self.Max3x3(cur) + self.SepConv7x7(prev)
+        b2 = self.Avg3x3(cur) + self.SepConv5x5(prev)
+        b3 = self.Max3x3(cur) + self.SepConv3x3(b0)
+        # b1 = self.relu(self.Conv1x1(self.bn(self.Max3x3(cur)))) + self.SepConv7x7(prev)
+        # b2 = self.relu(self.Conv1x1(self.bn(self.Avg3x3(cur)))) + self.SepConv5x5(prev)
+        # b3 = self.relu(self.Conv1x1(self.bn(self.Max3x3(cur)))) + self.SepConv3x3(b0)
         b4 = self.Avg3x3_1(b0) + b1
         out = torch.cat([b1, b2, b3, b4], dim=1)
         '''
@@ -128,7 +131,7 @@ class NASNet(nn.Module):  # NASNet-A 6@768 for CIFAR-10 (3->32(192)->64(384)->12
         self.cells.append(ReductionCell(384, 128))
 
         self.cells.append(NormalCell(512, 128))
-        for _ in range(1, N - 1):
+        for _ in range(1, N-1):
             self.cells.append(NormalCell(768, 128))
 
         self.avg = nn.AdaptiveAvgPool2d((1, 1))
