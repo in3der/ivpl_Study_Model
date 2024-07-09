@@ -99,7 +99,7 @@ class ReductionCell(nn.Module):
 
 
 class NASNet(nn.Module):    # NASNet-A 6@768 for CIFAR-10
-    def __init__(self, in_channels=3, num_classes=10, N=6):
+    def __init__(self, in_channels=3, num_classes=10, N=5):
         super(NASNet, self).__init__()
         self.stem = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=3, stride=1, padding=1, bias=False),
@@ -107,9 +107,9 @@ class NASNet(nn.Module):    # NASNet-A 6@768 for CIFAR-10
             nn.ReLU()
         )
         self.N = N
-        self.init_channels = 32
+        self.init_channels = 3
         self.cells = nn.ModuleList()
-        self.cells.append(NormalCell(32, 32, 48))
+        self.cells.append(NormalCell(3, 3, 48))
         for _ in range(1, N):
             self.cells.append(NormalCell(48, 48, 48))
         self.cells.append(ReductionCell(48, 48, 96))
@@ -122,7 +122,7 @@ class NASNet(nn.Module):    # NASNet-A 6@768 for CIFAR-10
         self.fc = nn.Linear(768, num_classes)
 
     def forward(self, x):
-        x = self.stem(x)
+        #x = self.stem(x)
         prev_x = x
         for cell in self.cells:
             x = cell(x, prev_x)
@@ -151,10 +151,10 @@ transform = transforms.Compose([
 ])
 
 train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=2)
+train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=2)
 
 test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=2)
+test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False, num_workers=2)
 
 epochs = 10
 criterion = nn.CrossEntropyLoss()
