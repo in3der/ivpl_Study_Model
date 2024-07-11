@@ -317,12 +317,12 @@ model = NASNet().to(device)
 # ----------------------------------------------------------------------------------------------
 # 1. 모델 저장 - torch.save(model, os.path.join(logs_dir+'/model', 'model.pth'.format(epochs)))
 # 모델 불러오기
-#model = torch.load("./logs/model/NASNet_CIFAR10/model.pth")
+model = torch.load("./logs/model/NASNet_CIFAR10/model.pth")
 
 
 # 2. 가중치 저장 - torch.save(model.state_dict(), os.path.join(logs_dir+'/model', 'model_weights.pth'.format(epochs)))
-model = NASNet()  # 모델 인스턴스 생성
-model.load_state_dict(torch.load("./logs/model/NASNet_CIFAR10/model_weights.pth"))    # 가중치 불러오기
+#model = NASNet()  # 모델 인스턴스 생성
+#model.load_state_dict(torch.load("./logs/model/NASNet_CIFAR10/model_weights.pth"))    # 가중치 불러오기
 
 
 # 3. 체크포인트 저장
@@ -371,9 +371,6 @@ def test():
             for inputs, labels in test_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
 
-                # 입력 이미지를 Float32로 변환하기 전에 Normalize 수행
-                inputs = transforms.Normalize(mean, std)(inputs)
-
                 outputs = model(inputs.float())
                 loss = criterion(outputs, labels)
                 test_loss += loss.item() * inputs.size(0)
@@ -393,12 +390,21 @@ test()
 
 # -------------------------------------------------------------------
 # 새로운 이미지 데이터 classification predict
+# # ImageNet
+# data_transforms_forTest = transforms.Compose([
+#     transforms.Resize((256, 256)),
+#     transforms.RandomCrop(224),
+#     transforms.RandomHorizontalFlip(),
+#     transforms.ToTensor(),
+#     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+# ])
+# cifar10
 data_transforms_forTest = transforms.Compose([
-    transforms.Resize((256, 256)),
-    transforms.RandomCrop(224),
+    transforms.Resize((40, 40)),
+    transforms.RandomCrop((32, 32)),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
 

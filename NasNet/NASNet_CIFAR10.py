@@ -6,6 +6,7 @@ import torchvision.datasets as datasets
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from torch.nn import AvgPool2d, MaxPool2d, ReLU
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'device : {device}')
 from torchsummary import summary
@@ -14,11 +15,13 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 import os
+
 # 로그를 저장할 logs 폴더 경로
 logs_dir = '/home/ivpl-d29/myProject/Study_Model/NasNet/logs'
 
 # SummaryWriter 생성
 writer = SummaryWriter(logs_dir)
+
 
 class SepConv2d(nn.Module):  # Separable Convolution 2D, 논문 Appendix.A.4. 참고
     def __init__(self, in_channels, out_channels, kernel, stride=1, padding=1, bias=False):
@@ -29,14 +32,18 @@ class SepConv2d(nn.Module):  # Separable Convolution 2D, 논문 Appendix.A.4. �
                                    groups=in_channels)
         # pointwise convolution : 1x1 convolution 수행하여 채널 수를 변환.
         self.pointwise = nn.Conv2d(in_channels, out_channels, 1, stride=1, bias=bias)
+        self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.1)
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = self.depthwise(x)
-        x = self.pointwise(x)
-        # x = self.relu(x)
         # x = self.depthwise(x)
         # x = self.pointwise(x)
+
+        x = self.relu(x)
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        x = self.bn(x)
+
         return x
 
 
@@ -74,14 +81,14 @@ class ReductionCell(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(ReductionCell, self).__init__()
         self.prev1X1 = nn.Conv2d(in_channels, out_channels, kernel_size=1)
-        self.SepConv3x3 = SepConv2d(in_channels//3, out_channels, kernel=3, stride=1, padding=1)
-        self.SepConv5x5 = SepConv2d(in_channels//3, out_channels, kernel=5, stride=2, padding=2)
-        self.SepConv7x7 = SepConv2d(in_channels//3, out_channels, kernel=7, stride=2, padding=3)
+        self.SepConv3x3 = SepConv2d(in_channels // 3, out_channels, kernel=3, stride=1, padding=1)
+        self.SepConv5x5 = SepConv2d(in_channels // 3, out_channels, kernel=5, stride=2, padding=2)
+        self.SepConv7x7 = SepConv2d(in_channels // 3, out_channels, kernel=7, stride=2, padding=3)
         self.Avg3x3 = AvgPool2d(kernel_size=3, stride=2, padding=1)
         self.Avg3x3_1 = AvgPool2d(kernel_size=3, stride=1, padding=1)
         self.Max3x3 = MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.Conv1x1 = nn.Conv2d(in_channels//3, out_channels, kernel_size=1, stride=1)
-        self.bn = nn.BatchNorm2d(in_channels//3, eps=0.001, momentum=0.1)
+        self.Conv1x1 = nn.Conv2d(in_channels // 3, out_channels, kernel_size=1, stride=1)
+        self.bn = nn.BatchNorm2d(in_channels // 3, eps=0.001, momentum=0.1)
         self.bn_in = nn.BatchNorm2d(in_channels, eps=0.001, momentum=0.1)
         self.relu = nn.ReLU()
 
@@ -119,19 +126,19 @@ class NASNet(nn.Module):  # NASNet-A 6@768 for CIFAR-10 (3->32(192)->64(384)->12
         )
         self.cells = nn.ModuleList()
         self.cells.append(NormalCell(96, 32))
-        for _ in range(1, N-1):
+        for _ in range(1, N - 1):
             self.cells.append(NormalCell(192, 32))
 
         self.cells.append(ReductionCell(192, 64))
 
         self.cells.append(NormalCell(256, 64))
-        for _ in range(1, N-1):
+        for _ in range(1, N - 1):
             self.cells.append(NormalCell(384, 64))
 
         self.cells.append(ReductionCell(384, 128))
 
         self.cells.append(NormalCell(512, 128))
-        for _ in range(1, N-1):
+        for _ in range(1, N - 1):
             self.cells.append(NormalCell(768, 128))
 
         self.avg = nn.AdaptiveAvgPool2d((1, 1))
@@ -152,6 +159,7 @@ class NASNet(nn.Module):  # NASNet-A 6@768 for CIFAR-10 (3->32(192)->64(384)->12
         x = F.softmax(x, dim=1)
         return x
 
+
 model = NASNet().to(device)
 summary(model, (3, 32, 32))
 
@@ -170,17 +178,19 @@ train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_worker
 test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=4)
 
-epochs = 20
+epochs = 100
 
 # 손실 함수 및 optimizer 설정
 criterion = nn.CrossEntropyLoss()
 from torch.optim.lr_scheduler import CosineAnnealingLR
+
 optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
 lr_scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
 
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
+
+
 def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=epochs, topk=(5,)):
     train_losses = []
     val_losses = []

@@ -41,7 +41,7 @@ test_dataset = datasets.ImageFolder(os.path.join(data_dir, 'test'), transform=da
 
 # 데이터 로더
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)S
+val_loader = DataLoader(val_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
 
 class BasicBlock(nn.Module):
