@@ -30,20 +30,33 @@ class SepConv2d(nn.Module):  # Separable Convolution 2D, 논문 Appendix.A.4. �
         # groups=in_channels 설정하여 입력 채널 수로 그룹을 나누어 각 그룹에 대해 독립적 필터링 수행
         self.depthwise = nn.Conv2d(in_channels, in_channels, kernel, stride=stride, padding=padding, bias=bias,
                                    groups=in_channels)
+        self.depthwise_s1 = nn.Conv2d(in_channels, in_channels, kernel, stride=1, padding=padding, bias=bias,
+                                      groups=in_channels)
         # pointwise convolution : 1x1 convolution 수행하여 채널 수를 변환.
         self.pointwise = nn.Conv2d(in_channels, out_channels, 1, stride=1, bias=bias)
-        self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.1)
         self.relu = nn.ReLU()
+        self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.1)
 
     def forward(self, x):
+        # ver.1 only conv
         # x = self.depthwise(x)
         # x = self.pointwise(x)
 
+        # ver.2 bn-conv-relu
+        # x = self.bn(x)
+        # x = self.depthwise(x)
+        # x = self.pointwise(x)
+        # x = self.relu(x)
+
+        # ver.3 sep 2번
         x = self.relu(x)
         x = self.depthwise(x)
         x = self.pointwise(x)
         x = self.bn(x)
-
+        x = self.relu(x)
+        x = self.depthwise_s1(x)
+        x = self.pointwise(x)
+        x = self.bn(x)
         return x
 
 
@@ -178,7 +191,7 @@ train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_worker
 test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=4)
 
-epochs = 100
+epochs = 20
 
 # 손실 함수 및 optimizer 설정
 criterion = nn.CrossEntropyLoss()
