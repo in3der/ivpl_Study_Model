@@ -20,97 +20,181 @@ logs_dir = '/home/ivpl-d29/myProject/Study_Model/NasNet/logs'
 # SummaryWriter 생성
 writer = SummaryWriter(logs_dir)
 
-class SepConv2d(nn.Module):  # Separable Convolution 2D, 논문 Appendix.A.4. 참고
+class SepConv2d1(nn.Module):
     def __init__(self, in_channels, out_channels, kernel, stride=1, padding=1, bias=False):
-        super(SepConv2d, self).__init__()
-        # depthwise convolution : 각 입력 채널에 대해 독립적으로 필터링 수행 (입력 채널 수 = 출력 채널 수)
-        # groups=in_channels 설정하여 입력 채널 수로 그룹을 나누어 각 그룹에 대해 독립적 필터링 수행
-        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel, stride=stride, padding=padding, bias=bias,
-                                   groups=in_channels)
-        # pointwise convolution : 1x1 convolution 수행하여 채널 수를 변환.
-        self.pointwise = nn.Conv2d(in_channels, out_channels, 1, stride=1, bias=bias)
+        super(SepConv2d1, self).__init__()
+        self.depthwise = nn.Conv2d(in_channels, out_channels, kernel, stride=stride, padding=padding, bias=bias)
+        self.depthwise_s1 = nn.Conv2d(out_channels, out_channels, kernel, stride=1, padding=padding, bias=bias)
+        self.pointwise = nn.Conv2d(out_channels, out_channels, 1, stride=1, bias=bias)
         self.relu = nn.ReLU()
         self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.1)
-
     def forward(self, x):
         x = self.relu(x)
         x = self.depthwise(x)
         x = self.pointwise(x)
         x = self.bn(x)
         x = self.relu(x)
-        x = self.depthwise(x)
+        x = self.depthwise_s1(x)
         x = self.pointwise(x)
         x = self.bn(x)
         return x
 
+class SepConv2d(nn.Module):  # Separable Convolution 2D, 논문 Appendix.A.4. 참고
+    def __init__(self, in_channels, out_channels, kernel, stride=1, padding=1, bias=False):
+        super(SepConv2d, self).__init__()
+        # depthwise convolution : 각 입력 채널에 대해 독립적으로 필터링 수행 (입력 채널 수 = 출력 채널 수)
+        # groups=in_channels 설정하여 입력 채널 수로 그룹을 나누어 각 그룹에 대해 독립적 필터링 수행
+        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel, stride=stride, padding=padding, bias=bias, groups=in_channels)
+        self.depthwise_s1 = nn.Conv2d(in_channels, in_channels, kernel, stride=1, padding=padding, bias=bias, groups=in_channels)
+        # pointwise convolution : 1x1 convolution 수행하여 채널 수를 변환.
+        self.pointwise = nn.Conv2d(in_channels, out_channels, 1, stride=1, bias=bias)
+        self.relu = nn.ReLU()
+        self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.1)
+    def forward(self, x):
+        x = self.relu(x)
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        x = self.bn(x)
+        x = self.relu(x)
+        x = self.depthwise_s1(x)
+        x = self.pointwise(x)
+        x = self.bn(x)
+        return x
 
-
-class NormalCell(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(NormalCell, self).__init__()
-        self.prev1X1 = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+class ReductionCell1(nn.Module):
+    def __init__(self, in_channels=96, out_channels=42):     # 96, 42
+        super(ReductionCell1, self).__init__()
+        self.prev1X1_cur = nn.Conv2d(in_channels, out_channels, kernel_size=1)
         self.SepConv3x3 = SepConv2d(out_channels, out_channels, kernel=3, stride=1, padding=1)
-        self.SepConv5x5 = SepConv2d(out_channels, out_channels, kernel=5, stride=1, padding=2)
-        self.Avg3x3 = AvgPool2d(kernel_size=3, stride=1, padding=1)
-        #self.bn_in = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.1)
+        self.SepConv5x5 = SepConv2d(out_channels, out_channels, kernel=5, stride=2, padding=2)
+        self.SepConv5x5_out = SepConv2d1(in_channels, out_channels, kernel=5, stride=2, padding=2)
+        self.SepConv7x7 = SepConv2d1(in_channels, out_channels, kernel=7, stride=2, padding=3)
+        self.Avg3x3 = AvgPool2d(kernel_size=3, stride=2, padding=1)
+        self.Avg3x3_1 = AvgPool2d(kernel_size=3, stride=1, padding=1)
+        self.Max3x3 = MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.1)
         self.relu = nn.ReLU()
-
-    def forward(self, cur, prev):
-        # h_j = cur(현재 hidden state)
-        # h_{j-1} = prev(revious)(이전 hidden state)
-        cur = self.relu(self.prev1X1(cur))
-        prev = self.relu(self.prev1X1(prev))
-        b0 = self.SepConv3x3(cur) + cur
-        b1 = self.SepConv3x3(prev) + self.SepConv5x5(prev)
-        b2 = self.Avg3x3(cur) + prev
-        b3 = self.Avg3x3(prev) + self.Avg3x3(prev)
-        b4 = self.SepConv5x5(prev) + self.SepConv3x3(prev)
-        out = torch.cat([prev, b0, b1, b2, b3, b4], dim=1)
+    def forward(self, prev):
+        cur = self.bn(self.prev1X1_cur(self.relu(prev)))
+        b0 = self.SepConv7x7(prev) + self.SepConv5x5(cur)
+        b1 = self.Max3x3(cur) + self.SepConv7x7(prev)
+        b2 = self.Avg3x3(cur) + self.SepConv5x5_out(prev)
+        b3 = self.Max3x3(cur) + self.SepConv3x3(b0)
+        b4 = self.Avg3x3_1(b0) + b1
+        out = torch.cat([b1, b2, b3, b4], dim=1)
         '''
-        print(f'Normal Cell 진입, After prev1x1 cur: {cur.shape}')
-        print(f'After prev1x1 cur: {cur.shape}')
         print(f'After b0: {b0.shape}')
-        print(f'After NormalCell 출력: {out.shape}')
+        print(f'After b1: {b1.shape}')
+        print(f'After b2: {b2.shape}')
+        print(f'After b3: {b3.shape}')
+        print(f'After b4: {b4.shape}')
+        print(f'out Reduction shape :  {out.shape}')
         '''
         return out
 
-
-class ReductionCell(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(ReductionCell, self).__init__()
-        self.prev1X1 = nn.Conv2d(in_channels, out_channels, kernel_size=1)
-        self.SepConv3x3 = SepConv2d(out_channels, out_channels, kernel=3, stride=1, padding=1)
-        self.SepConv5x5 = SepConv2d(out_channels, out_channels, kernel=5, stride=2, padding=2)
-        self.SepConv7x7 = SepConv2d(out_channels, out_channels, kernel=7, stride=2, padding=3)
-        self.Avg3x3 = AvgPool2d(kernel_size=3, stride=4, padding=1)     # sep conv 에서 dw, pw 한 줄 더 쓰려면 stride 2->4
+class ReductionCell2(nn.Module):
+    def __init__(self, inPrev=96, outPrev=42, inCur=168, outCur=84): # 96, 42, 168, 84
+        super(ReductionCell2, self).__init__()
+        self.prev1X1_cur = nn.Conv2d(inCur, outCur, kernel_size=1)
+        self.prev1X1_prev = nn.Conv2d(inPrev, outPrev*2, kernel_size=1, stride=2)
+        self.SepConv3x3Prev = SepConv2d(inPrev, outPrev, kernel=3, stride=1, padding=1)
+        self.SepConv3x3 = SepConv2d(84, 84, kernel=3, stride=1, padding=1)
+        self.SepConv5x5 = SepConv2d(84, 84, kernel=5, stride=2, padding=2)
+        self.SepConv7x7 = SepConv2d(84, 84, kernel=7, stride=2, padding=3)
+        self.SepConv7x7Cur = SepConv2d(inCur, outCur, kernel=7, stride=2, padding=3)
+        self.Avg3x3 = AvgPool2d(kernel_size=3, stride=2, padding=1)
         self.Avg3x3_1 = AvgPool2d(kernel_size=3, stride=1, padding=1)
-        self.Max3x3 = MaxPool2d(kernel_size=3, stride=4, padding=1)      # sep conv 에서 dw, pw 한 줄 더 쓰려면 stride 2->4
-        self.Conv1x1 = nn.Conv2d(in_channels//3, out_channels, kernel_size=1, stride=1)
-        self.bn = nn.BatchNorm2d(in_channels//3, eps=0.001, momentum=0.1)
-        #self.bn_in = nn.BatchNorm2d(in_channels, eps=0.001, momentum=0.1)
+        self.Max3x3 = MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.bn = nn.BatchNorm2d(84, eps=0.001, momentum=0.1)
         self.relu = nn.ReLU()
-
-    def forward(self, cur, prev):
-        cur = self.relu(self.prev1X1(cur))
-        prev = self.relu(self.prev1X1(prev))
+    def forward(self, prev, cur):
+        cur = self.bn(self.prev1X1_cur(self.relu(cur)))
+        prev = self.bn(self.prev1X1_prev(self.relu(prev)))
         b0 = self.SepConv7x7(prev) + self.SepConv5x5(cur)
         b1 = self.Max3x3(cur) + self.SepConv7x7(prev)
         b2 = self.Avg3x3(cur) + self.SepConv5x5(prev)
         b3 = self.Max3x3(cur) + self.SepConv3x3(b0)
         b4 = self.Avg3x3_1(b0) + b1
         out = torch.cat([b1, b2, b3, b4], dim=1)
-        '''
-        print(f'-------------Reduc Cell 진입: {cur.shape}')
-        print(f'After prev1x1 cur: {cur.shape}')
-        print(f'After prev1x1 prev: {prev.shape}')
-        print(f'After b0: {b0.shape}')
-        print(f'After b1: {b1.shape}')
-        print(f'After b2: {b2.shape}')
-        print(f'After b3: {self.Avg3x3_1(b0).shape}')
-        print(f'After b4: {b4.shape}')
-        print(f'out Reduction shape :  {out.shape}')
-        '''
+        return out
+
+
+class FirstNormalCell(nn.Module):
+    def __init__(self, inPrev, outPrev, inCur, outCur):
+        super(FirstNormalCell, self).__init__()
+        self.avg = nn.AvgPool2d(1, 2)
+        self.prev1X1 = nn.Conv2d(inPrev, outCur, kernel_size=1)
+        self.cur1X1 = nn.Conv2d(inCur, outCur, kernel_size=1)
+        self.SepConv3x3 = SepConv2d(outCur, outCur, kernel=3, stride=1, padding=1)
+        self.SepConv3x3Cur = SepConv2d(outCur, outCur, kernel=3, stride=1, padding=1)
+        self.SepConv5x5 = SepConv2d(outCur, outCur, kernel=5, stride=1, padding=2)
+        self.SepConv5x5Cur = SepConv2d(outCur, outCur, kernel=5, stride=1, padding=2)
+        self.Avg3x3 = AvgPool2d(kernel_size=3, stride=1, padding=1)
+        self.bnPrev = nn.BatchNorm2d(outCur, eps=0.001, momentum=0.1)
+        self.bnCur = nn.BatchNorm2d(outCur, eps=0.001, momentum=0.1)
+        self.relu = nn.ReLU()
+    def forward(self, prev, cur):
+
+        prev = self.bnPrev(self.prev1X1(self.avg(prev)))
+        cur = self.bnCur(self.cur1X1(self.relu(cur)))
+        b0 = self.SepConv3x3(cur) + cur
+        b1 = self.SepConv3x3(prev) + self.SepConv5x5(prev)
+        b2 = self.Avg3x3(cur) + prev
+        b3 = self.Avg3x3(prev) + self.Avg3x3(prev)
+        b4 = self.SepConv5x5(prev) + self.SepConv3x3(prev)
+        out = torch.cat([prev, b0, b1, b2, b3, b4], dim=1)
+        return out
+
+
+class NormalCell(nn.Module):
+    def __init__(self, inPrev, outPrev, inCur, outCur):
+        super(NormalCell, self).__init__()
+        self.prev1X1 = nn.Conv2d(inPrev, outCur, kernel_size=1)
+        self.cur1X1 = nn.Conv2d(inCur, outCur, kernel_size=1)
+        self.SepConv3x3Prev = SepConv2d(outPrev, outPrev, kernel=3, stride=1, padding=1)
+        self.SepConv3x3Cur = SepConv2d(outCur, outCur, kernel=3, stride=1, padding=1)
+        self.SepConv5x5Prev = SepConv2d(outPrev, outPrev, kernel=5, stride=1, padding=2)
+        self.SepConv5x5Cur = SepConv2d(outCur, outCur, kernel=5, stride=1, padding=2)
+        self.Avg3x3 = AvgPool2d(kernel_size=3, stride=1, padding=1)
+        self.bnPrev = nn.BatchNorm2d(outPrev, eps=0.001, momentum=0.1)
+        self.bnCur = nn.BatchNorm2d(outCur, eps=0.001, momentum=0.1)
+        self.relu = nn.ReLU()
+
+    def forward(self, prev, cur):
+        prev = self.bnPrev(self.prev1X1(self.relu(prev)))
+        cur = self.bnCur(self.cur1X1(self.relu(cur)))
+        b0 = self.SepConv3x3Cur(cur) + cur
+        b1 = self.SepConv3x3Prev(prev) + self.SepConv5x5Prev(prev)
+        b2 = self.Avg3x3(cur) + prev
+        b3 = self.Avg3x3(prev) + self.Avg3x3(prev)
+        b4 = self.SepConv5x5Prev(prev) + self.SepConv3x3Prev(prev)
+        out = torch.cat([prev, b0, b1, b2, b3, b4], dim=1)
+        return out
+
+class ReductionCell(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(ReductionCell, self).__init__()
+        self.prev1X1_cur = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        self.prev1X1_prev = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        self.SepConv3x3 = SepConv2d(out_channels, out_channels, kernel=3, stride=1, padding=1)
+        self.SepConv5x5 = SepConv2d(out_channels, out_channels, kernel=5, stride=2, padding=2)
+        self.SepConv7x7 = SepConv2d(out_channels, out_channels, kernel=7, stride=2, padding=3)
+        self.Avg3x3 = AvgPool2d(kernel_size=3, stride=2, padding=1)
+        self.Avg3x3_1 = AvgPool2d(kernel_size=3, stride=1, padding=1)
+        self.Max3x3 = MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.Conv1x1 = nn.Conv2d(in_channels//3, out_channels, kernel_size=1, stride=1)
+        self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0.1)
+        self.relu = nn.ReLU()
+
+    def forward(self, prev, cur):
+        cur = self.bn(self.prev1X1_cur(self.relu(cur)))
+        prev = self.bn(self.prev1X1_prev(self.relu(prev)))
+        b0 = self.SepConv7x7(prev) + self.SepConv5x5(cur)
+        b1 = self.Max3x3(cur) + self.SepConv7x7(prev)
+        b2 = self.Avg3x3(cur) + self.SepConv5x5(prev)
+        b3 = self.Max3x3(cur) + self.SepConv3x3(b0)
+        b4 = self.Avg3x3_1(b0) + b1
+        out = torch.cat([b1, b2, b3, b4], dim=1)
         return out
 
 
@@ -123,26 +207,27 @@ class NASNet(nn.Module):  # NASNet-A 6@4032 for ImageNet (3->96->42->84->168(100
             nn.BatchNorm2d(96),
             nn.ReLU()
         )
+        self.reduction_cell1 = ReductionCell1(96, 42)   # 96, 96, 96, 42
+        self.reduction_cell2 = ReductionCell2(96, 42, 168, 84)   # 96, 42, 168, 84
         self.cells = nn.ModuleList()
-        self.cells.append(ReductionCell(96, 42))
-        self.cells.append(ReductionCell(168, 42))
+        self.cells.append(FirstNormalCell(168, 84, 336, 168))       # 168, 84, 336, 168
+        self.cells.append(NormalCell(336, 168, 1008, 168))       # 336, 168, 1008, 168
+        for _ in range(1, N - 2):
+            self.cells.append(NormalCell(1008, 168, 1008, 168))  # 1008, 168, 1008, 168
 
-        self.cells.append(NormalCell(168, 168))
-        for _ in range(1, N - 1):
-            self.cells.append(NormalCell(1008, 168))
+        self.cells.append(ReductionCell(1008, 336))                  # 1008, 336, 1008, 336
 
-        self.cells.append(ReductionCell(1008, 336))
+        self.cells.append(FirstNormalCell(1008, 168, 1344, 336))# 1008, 168, 1344, 336
+        self.cells.append(NormalCell(1344, 336, 2016, 336))     # 1344, 336, 2016, 336
+        for _ in range(1, N - 2):
+            self.cells.append(NormalCell(2016, 336, 2016, 336)) # 2016, 336, 2016, 336
 
-        self.cells.append(NormalCell(1344, 336))
-        for _ in range(1, N - 1):
-            self.cells.append(NormalCell(2016, 336))
+        self.cells.append(ReductionCell(2016, 672))                  # 2016, 672, 2016, 672
 
-        self.cells.append(ReductionCell(2016, 672))
-
-        self.cells.append(NormalCell(2688, 672))
-        for _ in range(1, N - 1):
-            self.cells.append(NormalCell(4032, 672))
-
+        self.cells.append(FirstNormalCell(2016, 336, 2688, 672))# 2016, 336, 2688, 672
+        self.cells.append(NormalCell(2688, 672, 4032, 672))     # 2688, 672, 4032, 672
+        for _ in range(1, N - 2):
+            self.cells.append(NormalCell(4032, 672, 4032, 672))  # 4032, 672, 4032, 672
         self.avg = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(filters, num_classes)  # 4032, 1000
         self.dropout = nn.Dropout(0.5)
@@ -150,12 +235,15 @@ class NASNet(nn.Module):  # NASNet-A 6@4032 for ImageNet (3->96->42->84->168(100
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = self.stem(x)
-        prev_x = x
+        x_stem_conv = self.stem(x)
+        prev_prev_x = self.reduction_cell1(x_stem_conv)
+        prev_x = self.reduction_cell2(x_stem_conv, prev_prev_x)
         for cell in self.cells:
-            x = cell(x, prev_x)
+            x = cell(prev_prev_x, prev_x)
+            prev_prev_x = prev_x
             prev_x = x
         x = self.avg(x)
+        x = self.dropout(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
         x = F.softmax(x, dim=1)
@@ -164,9 +252,10 @@ class NASNet(nn.Module):  # NASNet-A 6@4032 for ImageNet (3->96->42->84->168(100
 model = NASNet().to(device)
 summary(model, (3, 331, 331))
 
+
 # --- 데이터셋 준비, 학습 실행
 data_transforms = transforms.Compose([
-    transforms.Resize((350, 350)),  # 임의로 resize 350 지정
+    transforms.Resize((354, 354)),  # 임의로 resize 354 지정
     transforms.RandomCrop(331),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
@@ -179,16 +268,17 @@ val_dataset = datasets.ImageFolder(os.path.join(data_dir, 'val'), transform=data
 test_dataset = datasets.ImageFolder(os.path.join(data_dir, 'test'), transform=data_transforms)
 
 # 데이터 로더
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
+train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=8)
+val_loader = DataLoader(val_dataset, batch_size=8, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=8)
+test_loader = DataLoader(test_dataset, batch_size=8, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=8)
 
-epochs = 20
+epochs = 6
 
 # 손실 함수 및 optimizer 설정
 criterion = nn.CrossEntropyLoss()
 from torch.optim.lr_scheduler import CosineAnnealingLR
-optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
+# optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
+optimizer = optim.RMSprop(model.parameters(), lr=0.1, weight_decay=0.9, eps=1.0)
 lr_scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
 
 
