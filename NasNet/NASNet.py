@@ -277,8 +277,8 @@ epochs = 6
 # 손실 함수 및 optimizer 설정
 criterion = nn.CrossEntropyLoss()
 from torch.optim.lr_scheduler import CosineAnnealingLR
-# optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
-optimizer = optim.RMSprop(model.parameters(), lr=0.1, weight_decay=0.9, eps=1.0)
+optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
+# optimizer = optim.RMSprop(model.parameters(), lr=0.1, weight_decay=0.9, eps=1.0)
 lr_scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
 
 
