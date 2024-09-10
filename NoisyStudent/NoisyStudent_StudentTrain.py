@@ -1,28 +1,26 @@
-import os
 import torch
 import torch.nn as nn
-import numpy as np
+import torch.optim as optim
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from torch.utils.data import DataLoader, TensorDataset, random_split
-import torch.nn.functional as F
-from torch.nn import AvgPool2d, MaxPool2d, ReLU
-from torchsummary import summary
+import numpy as np
+from torch.utils.data import DataLoader, TensorDataset, Dataset, ConcatDataset
+import os
+import random
+from collections import defaultdict
+import shutil
 from tqdm import tqdm
-import torch.optim as optim
+import pandas as pd  # pandas를 사용하여 CSV 파일로 Pseudo-Label 저장 및 로드
+import torchvision.models as models
+from torchsummary import summary
+from torchvision.ops import StochasticDepth
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
-from collections import Counter
-from torchvision.ops import StochasticDepth
+from PIL import Image
+import ast
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'device : {device}')
-
-# 시드 설정- 재현가능하도록
-seed = 42
-torch.manual_seed(seed)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
 
 # 로그를 저장할 logs 폴더 경로
 logs_dir = '/home/ivpl-d29/myProject/Study_Model/NoisyStudent/logs'
@@ -30,10 +28,11 @@ logs_dir = '/home/ivpl-d29/myProject/Study_Model/NoisyStudent/logs'
 # SummaryWriter 생성
 writer = SummaryWriter(logs_dir)
 
-# Teacher model 준비 - EfficientNetB0
+# 1. Student Model 로드 - EfficientNet-B7
 import torchvision.models as models
 model = models.efficientnet_b0(pretrained=False)
 model.classifier = nn.Sequential(
+    #StochasticDepth(0.2, mode='batch'),  # StochasticDepth 추가 (0.2 비율로 삭제)
     nn.Dropout(p=0.2, inplace=True),
     nn.Linear(model.classifier[1].in_features, 100)
 )
@@ -41,61 +40,89 @@ model.to(device)
 summary(model, (3, 64, 64))
 print(model)
 
-# 시드 설정- 재현가능하도록
-seed = 42
-torch.manual_seed(seed)
 
-# --- 데이터셋 준비
+# 2. 데이터 로드 및 변환
+# Transformations for the datasets
 data_transforms = transforms.Compose([
-    #transforms.RandomAffine(degrees=0, translate=(0.05, 0.05)),  # 논문Table6- 5% 범위 내의 random translation (Both)
     transforms.RandomHorizontalFlip(),  # 논문Table6- Random flip (Both)
-    # transforms.RandAugment(num_ops=2, magnitude=27),  # 논문 - RandAugment (only Student Train)
+    transforms.RandAugment(num_ops=2, magnitude=27),  # 논문 - RandAugment (only Student Train)
     transforms.Resize(64),
     transforms.ToTensor(),
-    transforms.Normalize((0.5080, 0.4875, 0.4418), (0.2487, 0.2418, 0.2558)),
-    #transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+    transforms.Normalize((0.5030, 0.4793, 0.4316), (0.2538, 0.2466, 0.2595)),
 ])
+
+# Test transforms (no augmentations)
 testdata_transforms = transforms.Compose([
     transforms.Resize(64),
     transforms.ToTensor(),
     transforms.Normalize((0.5080, 0.4875, 0.4418), (0.2487, 0.2418, 0.2558))
-    #transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
 ])
 
-# 데이터 경로 설정
+# CIFAR-100 dataset
 data_dir = '/home/ivpl-d29/dataset/cifar100'
 
-train_dataset = datasets.CIFAR100(root=data_dir, train=True, download=True, transform=data_transforms)
+train_dataset_cifar100 = datasets.CIFAR100(root=data_dir, train=True, download=True, transform=data_transforms)
 test_dataset = datasets.CIFAR100(root=data_dir, train=False, download=True, transform=testdata_transforms)
 
-train_size = int(0.8 * len(train_dataset))
-val_size = int(0.2 * len(train_dataset))
+train_size = int(0.8 * len(train_dataset_cifar100))
+val_size = len(train_dataset_cifar100) - train_size
+train_dataset_cifar100, val_dataset_cifar100 = torch.utils.data.random_split(train_dataset_cifar100,
+                                                                             [train_size, val_size])
 
-train_dataset, val_dataset = random_split(train_dataset, [train_size, val_size])
 
-# DataLoader 설정
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4)
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=4)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=4)
+# ----- Custom PseudoLabeledDataset for soft-labeled data -----
+class HardPseudoLabeledDataset(Dataset):
+    def __init__(self, image_paths, soft_labels, transform=None):
+        self.image_paths = image_paths
+        self.hard_labels = [torch.tensor(ast.literal_eval(soft_label)).argmax().item() for soft_label in soft_labels]
+        self.transform = transform
 
-# 데이터셋 개수 출력
-print(f"Number of training samples: {len(train_dataset)}")
-print(f"Number of validation samples: {len(val_dataset)}")
-print(f"Number of test samples: {len(test_dataset)}")
+    def __len__(self):
+        return len(self.image_paths)
 
-# 클래스별 이미지 수 출력 함수
-def print_class_distribution(dataset, dataset_name):
-    labels = [sample[1] for sample in dataset]  # 라벨 추출
-    counter = Counter(labels)
-    print(f"\nClass distribution in {dataset_name}:")
-    for class_id, count in sorted(counter.items()):
-        print(f"Class {class_id}: {count} images")
+    def __getitem__(self, idx):
+        image_path = self.image_paths[idx]
+        hard_label = self.hard_labels[idx]
 
-# 클래스별 이미지 수 출력
-print_class_distribution(train_dataset, "training set")
-print_class_distribution(val_dataset, "validation set")
-print_class_distribution(test_dataset, "test set")
+        image = Image.open(image_path).convert('RGB')
+        if self.transform:
+            image = self.transform(image)
 
+        return image, hard_label
+
+
+# Load pseudo-labeled data (path and soft labels)
+pseudo_data_dir = '/home/ivpl-d29/dataset/tiny-imagenet-200/balanced_data/'
+pseudo_labeled_images = []
+pseudo_soft_labels = []
+
+# Assuming a CSV or structured text file where you have image paths and corresponding soft labels
+import pandas as pd
+
+pseudo_label_file = '/home/ivpl-d29/myProject/Study_Model/NoisyStudent/filtered_pseudo_labels.csv'
+df_pseudo_labels = pd.read_csv(pseudo_label_file)
+
+for index, row in df_pseudo_labels.iterrows():
+    image_path = os.path.join(pseudo_data_dir, row['Image Path'])
+    soft_label = row['Soft Pseudo Label']  # Example format: '[0.1, 0.2, 0.7, ...]'
+    pseudo_labeled_images.append(image_path)
+    pseudo_soft_labels.append(soft_label)
+
+# Create pseudo-labeled dataset
+pseudo_labeled_dataset = HardPseudoLabeledDataset(pseudo_labeled_images, pseudo_soft_labels, transform=data_transforms)
+
+# ----- Combine CIFAR-100 and PseudoLabeled datasets -----
+combined_train_dataset = ConcatDataset([train_dataset_cifar100, pseudo_labeled_dataset])
+
+# DataLoader setup
+train_loader = DataLoader(combined_train_dataset, batch_size=512, shuffle=True, num_workers=4)
+val_loader = DataLoader(val_dataset_cifar100, batch_size=512, shuffle=False, num_workers=4)
+test_loader = DataLoader(test_dataset, batch_size=512, shuffle=False, num_workers=4)
+
+# Verify the combined dataset sizes
+print(f"Number of training samples (CIFAR-100 + Pseudo-Labeled): {len(combined_train_dataset)}")
+print(f"Number of validation samples (CIFAR-100): {len(val_dataset_cifar100)}")
+print(f"Number of test samples (CIFAR-100): {len(test_dataset)}")
 
 # ---- 학습 준비
 # epochs = 350  # 논문- B4이상 700, 미만은 350 epochs
@@ -105,10 +132,11 @@ epochs = 150
 criterion = nn.CrossEntropyLoss()
 from torch.optim.lr_scheduler import ExponentialLR
 #optimizer = optim.SGD(model.parameters(), lr=0.128, weight_decay=5e-4, momentum=0.9, nesterov=True)
-optimizer = optim.SGD(model.parameters(), lr=0.001, weight_decay=0.01, momentum=0.9, nesterov=True)
+optimizer = optim.SGD(model.parameters(), lr=0.01, weight_decay=5e-4, momentum=0.9, nesterov=True)
 # 논문 - epochs 350 + 2.4(step size) + 0.97(rate)
 # 논문 - epochs 700 + 4.8(step size) + 0.97(rate)
-step_size = 1.2
+step_size = 4.8
+
 decay_rate = 0.97
 gamma = decay_rate ** (1 / step_size)
 lr_scheduler = ExponentialLR(optimizer, gamma=gamma)
@@ -176,18 +204,22 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=epochs, to
                 best_accuracy = val_accuracy
                 model_save_dir = os.path.join(logs_dir, 'model')
                 torch.save(model, os.path.join(model_save_dir, f'model_epoch{epoch + 1}_acc{int(val_accuracy * 100):02d}.pth'))
-                torch.save(model, os.path.join(model_save_dir, f'model_epoch{epoch + 1}_acc{int(val_accuracy * 100):02d}.pt'))
-                torch.save(model.state_dict(), os.path.join(model_save_dir, f'model_weights_epoch{epoch + 1}_acc{int(val_accuracy * 100):02d}.pth'))
+                #torch.save(model, os.path.join(model_save_dir, f'model_epoch{epoch + 1}_acc{int(val_accuracy * 100):02d}.pt'))
+                #torch.save(model.state_dict(), os.path.join(model_save_dir, f'model_weights_epoch{epoch + 1}_acc{int(val_accuracy * 100):02d}.pth'))
                 checkpoint = {
                     'epoch': epoch + 1,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': val_loss,
                 }
-                torch.save(checkpoint, os.path.join(model_save_dir, f'checkpoint_epoch{epoch + 1}_acc{int(val_accuracy * 100):02d}.pth'))
+                #torch.save(checkpoint, os.path.join(model_save_dir, f'checkpoint_epoch{epoch + 1}_acc{int(val_accuracy * 100):02d}.pth'))
 
         lr_scheduler.step()
         print(f"Epoch {epoch + 1}: learning rate = {current_lr}")
+        if epoch == num_epochs - 1:  # 마지막 epoch일 때만 저장
+            model_save_dir = os.path.join(logs_dir, 'model')
+            torch.save(model,
+                       os.path.join(model_save_dir, f'model_epoch{num_epochs}_acc{int(val_accuracy * 100):02d}.pth'))
 
     print('Training complete')
     return train_losses, val_losses, train_accuracies, val_accuracies, topk_accuracies, learning_rates
@@ -285,3 +317,4 @@ plt.legend()
 
 plt.tight_layout()
 plt.savefig('output_image.png')
+
