@@ -32,7 +32,7 @@ torch.backends.cudnn.benchmark = False
 
 # -----1. Teacher 모델 로드 및 테스트 정확도 평가
 # 저장된 모델 가중치 로드
-model_load_path = '/home/ivpl-d29/myProject/Study_Model/NoisyStudent/logs/model/model_epoch149_acc57.pth'
+model_load_path = '/home/ivpl-d29/myProject/Study_Model/NoisyStudent/logs/model/model_epoch150_acc47.pth'
 model = torch.load(model_load_path, map_location=device)
 model.to(device)
 
@@ -43,14 +43,15 @@ data_transforms = transforms.Compose([
     # transforms.RandAugment(num_ops=2, magnitude=27),  # 논문 - RandAugment (only Student Train)
     transforms.Resize(64),
     transforms.ToTensor(),
-    transforms.Normalize((0.5080, 0.4875, 0.4418), (0.2487, 0.2418, 0.2558)),
-    #transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+    #transforms.Normalize((0.5080, 0.4875, 0.4418), (0.2487, 0.2418, 0.2558)), # Teacher1 이후
+    # transforms.Normalize((0.5030, 0.4793, 0.4316), (0.2538, 0.2466, 0.2595)),    # Student 1 이후
+    transforms.Normalize((0.5085, 0.4863, 0.4390), (0.2520, 0.2447, 0.2590)),   # Student 2 이후
+    # transforms.Normalize((0.5073, 0.4859, 0.4392), (0.2518, 0.2450, 0.2589)),     # Student 3 이후
 ])
 testdata_transforms = transforms.Compose([
     transforms.Resize(64),
     transforms.ToTensor(),
     transforms.Normalize((0.5080, 0.4875, 0.4418), (0.2487, 0.2418, 0.2558))
-    #transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
 ])
 
 data_dir = '/home/ivpl-d29/dataset/cifar100'
@@ -201,7 +202,7 @@ filtered_df = pd.read_csv(filtered_csv_path)
 # 원본 데이터셋 경로
 original_data_dir = '/home/ivpl-d29/dataset/tiny-imagenet-200/train'
 # 결과 저장할 폴더
-balanced_data_dir = '/home/ivpl-d29/dataset/tiny-imagenet-200/balanced_data'
+balanced_data_dir = '/home/ivpl-d29/dataset/tiny-imagenet-200/balanced_data3'
 os.makedirs(balanced_data_dir, exist_ok=True)
 
 # CIFAR-100 labels and paths
@@ -225,6 +226,37 @@ cifar100_origin_path = '/home/ivpl-d29/dataset/cifar100/CIFAR100_extracted/'
 # 각 클래스별 이미지 경로 수집
 class_images = defaultdict(list)
 
+# 모든 클래스에 대해 이미지 경로 수집 및 0개인 클래스도 확인
+all_classes = set(range(100))  # CIFAR-100 클래스 ID: 0부터 99
+filtered_classes = set(filtered_df['Hard Pseudo Label'].unique())  # 필터링된 클래스
+missing_classes = all_classes - filtered_classes  # 필터링 후 이미지가 없는 클래스들
+
+# CIFAR-100에서 이미지를 가져와서 복사
+for missing_class in missing_classes:
+    class_name = f'class_{missing_class:03d}'  # 숫자 형식을 'class_001' 형태로 변환
+    class_dir = os.path.join(balanced_data_dir, class_name)
+    os.makedirs(class_dir, exist_ok=True)
+
+    # 해당 클래스에 맞는 CIFAR-100 라벨을 찾음
+    cifar_class_name = CIFAR100LABELS[missing_class]
+    cifar_class_path = os.path.join(cifar100_origin_path, cifar_class_name)
+
+    if not os.path.exists(cifar_class_path):
+        print(f"Warning: {cifar_class_path} 존재하지 않음.")
+        continue
+
+    # CIFAR-100 이미지를 해당 클래스 디렉토리로 복사
+    cifar_images = [os.path.join(cifar_class_path, img) for img in os.listdir(cifar_class_path) if
+                    os.path.isfile(os.path.join(cifar_class_path, img))]
+
+    for img_path in cifar_images:
+        if os.path.isfile(img_path):
+            shutil.copy(img_path, class_dir)
+        else:
+            print(f"Warning: {img_path} 존재하지 않음.")
+
+print("CIFAR-100 데이터셋에서 누락된 클래스 이미지 복사 완료.")
+
 for index, row in filtered_df.iterrows():
     hard_pseudo_label = row['Hard Pseudo Label']
     image_path = row['Image Path']
@@ -236,6 +268,8 @@ for class_id, images in class_images.items():
     class_dir = os.path.join(balanced_data_dir, class_name)
     os.makedirs(class_dir, exist_ok=True)
 
+    # 해당 클래스의 이미지를 가져옴 (필터링된 이미지가 있을 경우 사용)
+    images = class_images[class_id]
     #print(f"Processing class {class_name}...")  # 클래스 작업 시작 로그 출력
     num_images = len(images)
 
@@ -284,7 +318,7 @@ plt.figure(figsize=(20, 8))
 plt.scatter(class_image_count_after_balancing_df.index, class_image_count_after_balancing_df['Number of Images'], color='blue', marker='o')
 plt.xlabel('Class Name')
 plt.ylabel('Number of Images')
-plt.title('Number of Images per Class After Balancing')
+plt.title('3. Number of Images per Class After Balancing')
 plt.xticks(rotation=90)
 plt.grid(True)
 plt.savefig('3. class_per_image_after_balancing.png', bbox_inches='tight')
@@ -317,7 +351,7 @@ print(f"Number of test samples: {len(test_dataset)}")
 pseudo_labeled_images = []
 
 print('train loader에 들어가는지 확인')
-pseudo_labeled_data_dir = '/home/ivpl-d29/dataset/tiny-imagenet-200/balanced_data'
+pseudo_labeled_data_dir = balanced_data_dir
 for root, _, files in os.walk(pseudo_labeled_data_dir):
     for file in files:
         image_path = os.path.join(root, file)

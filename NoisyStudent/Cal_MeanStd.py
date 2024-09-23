@@ -14,7 +14,7 @@ data_transforms = transforms.Compose([
 
 # 미리 정의된 경로
 dataset_dir1 = '/home/ivpl-d29/dataset/cifar100/CIFAR100_extracted'
-dataset_dir2 = '/home/ivpl-d29/dataset/tiny-imagenet-200/balanced_data'  # 두 번째 데이터셋 경로
+dataset_dir2 = '/home/ivpl-d29/dataset/tiny-imagenet-200/balanced_data3'  # 세 번째 데이터셋 경로
 
 # 데이터셋의 개수 입력 받기
 dataset_count = int(input('계산할 데이터셋의 개수를 구하시오 (1 또는 2 입력): '))

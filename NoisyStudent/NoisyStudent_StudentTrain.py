@@ -44,11 +44,12 @@ print(model)
 # 2. 데이터 로드 및 변환
 # Transformations for the datasets
 data_transforms = transforms.Compose([
+    transforms.RandomAffine(degrees=5, translate=(0.05, 0.05)),
     transforms.RandomHorizontalFlip(),  # 논문Table6- Random flip (Both)
     transforms.RandAugment(num_ops=2, magnitude=27),  # 논문 - RandAugment (only Student Train)
     transforms.Resize(64),
     transforms.ToTensor(),
-    transforms.Normalize((0.5030, 0.4793, 0.4316), (0.2538, 0.2466, 0.2595)),
+    transforms.Normalize((0.5073, 0.4859, 0.4392), (0.2518, 0.2450, 0.2589)),
 ])
 
 # Test transforms (no augmentations)
@@ -92,12 +93,10 @@ class HardPseudoLabeledDataset(Dataset):
 
 
 # Load pseudo-labeled data (path and soft labels)
-pseudo_data_dir = '/home/ivpl-d29/dataset/tiny-imagenet-200/balanced_data/'
+pseudo_data_dir = '/home/ivpl-d29/dataset/tiny-imagenet-200/balanced_data3/'
 pseudo_labeled_images = []
 pseudo_soft_labels = []
 
-# Assuming a CSV or structured text file where you have image paths and corresponding soft labels
-import pandas as pd
 
 pseudo_label_file = '/home/ivpl-d29/myProject/Study_Model/NoisyStudent/filtered_pseudo_labels.csv'
 df_pseudo_labels = pd.read_csv(pseudo_label_file)
@@ -136,7 +135,6 @@ optimizer = optim.SGD(model.parameters(), lr=0.01, weight_decay=5e-4, momentum=0
 # 논문 - epochs 350 + 2.4(step size) + 0.97(rate)
 # 논문 - epochs 700 + 4.8(step size) + 0.97(rate)
 step_size = 4.8
-
 decay_rate = 0.97
 gamma = decay_rate ** (1 / step_size)
 lr_scheduler = ExponentialLR(optimizer, gamma=gamma)
