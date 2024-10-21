@@ -82,6 +82,6 @@ class YOLOv1(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
   
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = YOLOv1().to(device)
-summary(model, input_size=(3, 448, 448))
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#model = YOLOv1().to(device)
+#summary(model, input_size=(3, 448, 448))

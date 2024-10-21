@@ -133,17 +133,23 @@ testdata_transforms = transforms.Compose([
     transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
 ])
 
-# 데이터셋 로드
-data_dir = '/home/ivpl-d29/dataset/imagenet'
-train_dataset = datasets.ImageFolder(os.path.join(data_dir, 'train'), transform=data_transforms)
-val_dataset = datasets.ImageFolder(os.path.join(data_dir, 'val'), transform=data_transforms)
-test_dataset = datasets.ImageFolder(os.path.join(data_dir, 'test'), transform=data_transforms)
+# 데이터셋과 데이터로더 준비
+def prepare_data(data_dir):
+    data_transforms = transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+    ])
+    train_dataset = datasets.ImageFolder(os.path.join(data_dir, 'train'), transform=data_transforms)
+    val_dataset = datasets.ImageFolder(os.path.join(data_dir, 'val'), transform=data_transforms)
+    test_dataset = datasets.ImageFolder(os.path.join(data_dir, 'test'), transform=data_transforms)
 
-# 데이터 로더
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=4, drop_last=True, pin_memory=True, prefetch_factor=2)
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4, drop_last=True, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=4, drop_last=True, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=4, drop_last=True, pin_memory=True)
 
+    return train_loader, val_loader, test_loader
 # ---- 학습 준비 https://github.com/motokimura/yolo_v1_pytorch/blob/master/train_darknet.py#L197
 epochs = 90
 
@@ -154,7 +160,7 @@ optimizer = optim.SGD(model.parameters(), lr=0.1, weight_decay=1e-4, momentum=0.
 lr_scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
 
 # 모델 훈련 함수
-def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=epochs, topk=5):
+def train_model(model, criterion, optimizer, lr_scheduler, train_loader, val_loader, num_epochs=epochs, topk=5):
     best_accuracy = 0.0  # 최상의 정확도를 추적할 변수
     train_losses, val_losses, train_accuracies, val_accuracies, topk_accuracies, learning_rates = ([] for _ in range(6))
 
@@ -296,44 +302,61 @@ def test_model(model, criterion, test_loader, device, topk=5):
     print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.4f}, Top-{topk} Test Accuracy: {test_topk_accuracy:.4f}")
     return test_loss, test_accuracy, test_topk_accuracy
 
-# 모델 훈련
-train_losses, val_losses, train_accuracies, val_accuracies, topk_accuracies, learning_rates = train_model(model, criterion, optimizer, lr_scheduler)
-# 모델 테스트
-test_loss, test_accuracy, test_topk_accuracy = test_model(model, criterion, test_loader, device)
+# 모델 훈련 및 평가 함수
+def main():
+    model = YOLOv1().to(device)
+    summary(model, input_size=(3, 224, 224))
+
+    # 데이터 준비
+    data_dir = '/home/ivpl-d29/dataset/imagenet'
+    train_loader, val_loader, test_loader = prepare_data(data_dir)
+
+    # 손실 함수 및 optimizer 설정
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=0.1, weight_decay=1e-4, momentum=0.9, nesterov=True)
+    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+
+    # 모델 훈련
+    train_losses, val_losses, train_accuracies, val_accuracies, topk_accuracies, learning_rates = train_model(model, criterion, optimizer, lr_scheduler, train_loader, val_loader)
+
+    # 모델 테스트
+    test_loss, test_accuracy, test_topk_accuracy = test_model(model, criterion, test_loader, device)
+
+    # 그래프 그리기
+    plot_graphs(train_losses, val_losses, train_accuracies, val_accuracies, learning_rates, topk_accuracies)
 
 
-# ----그래프 그리기
-plt.figure(figsize=(15, 10))
+def plot_graphs(train_losses, val_losses, train_accuracies, val_accuracies, learning_rates, topk_accuracies):
+    plt.figure(figsize=(15, 10))
 
-# Loss 그래프
-plt.subplot(2, 2, 1)
-plt.plot(train_losses, label='Training loss')
-plt.plot(val_losses, label='Validation loss')
-plt.xlabel('Epoch')
-plt.ylabel('Loss')
-plt.legend()
+    plt.subplot(2, 2, 1)
+    plt.plot(train_losses, label='Training loss')
+    plt.plot(val_losses, label='Validation loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
 
-# Accuracy 그래프
-plt.subplot(2, 2, 2)
-plt.plot(train_accuracies, label='Training accuracy')
-plt.plot(val_accuracies, label='Validation accuracy')
-plt.xlabel('Epoch')
-plt.ylabel('Accuracy')
-plt.legend()
+    plt.subplot(2, 2, 2)
+    plt.plot(train_accuracies, label='Training accuracy')
+    plt.plot(val_accuracies, label='Validation accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
 
-# Learning Rate 그래프
-plt.subplot(2, 2, 3)
-plt.plot(learning_rates, label='Learning rate')
-plt.xlabel('Epoch')
-plt.ylabel('Learning Rate')
-plt.legend()
+    plt.subplot(2, 2, 3)
+    plt.plot(learning_rates, label='Learning rate')
+    plt.xlabel('Epoch')
+    plt.ylabel('Learning Rate')
+    plt.legend()
 
-# Top-k Accuracy 그래프
-plt.subplot(2, 2, 4)
-plt.plot(topk_accuracies, label=f'Top-5 validation accuracy')
-plt.xlabel('Epoch')
-plt.ylabel(f'Top-5 Accuracy')
-plt.legend()
+    plt.subplot(2, 2, 4)
+    plt.plot(topk_accuracies, label='Top-5 validation accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Top-5 Accuracy')
+    plt.legend()
 
-plt.tight_layout()
-plt.savefig('output_image.png')
+    plt.tight_layout()
+    plt.savefig('output_image.png')
+
+if __name__ == "__main__":
+    main()

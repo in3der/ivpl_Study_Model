@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from collections import Counter
+import textwrap
 
 # IoU
 def intersection_over_union(boxes_preds, boxes_labels, box_format="midpoint"):
@@ -55,23 +56,22 @@ def non_max_suppression(bboxes, iou_threshold, threshold, box_format="corners"):
     """
     Does Non Max Suppression given bboxes
     Parameters:
-        bboxes (list): list of lists containing all bboxes with each bboxes
-        specified as [class_pred, prob_score, x1, y1, x2, y2]
-        iou_threshold (float): threshold where predicted bboxes is correct
-        threshold (float): threshold to remove predicted bboxes (independent of IoU)
-        box_format (str): "midpoint" or "corners" used to specify bboxes
+        bboxes (list): 탐지된 모든 bounding box의 리스트 / 형식: [class_pred, prob_score, x1, y1, x2, y2]
+        iou_threshold (float): 두 박스 간 IoU가 임계값보다 크면 겹치는 박스 중 하나를 제거
+        threshold (float): 박스의 confidence 낮은거 필터링하는 임계값
+        box_format (str): "midpoint" or "corners" 박스의 좌표 형식
     Returns:
         list: bboxes after performing NMS given a specific IoU threshold
     """
 
     assert type(bboxes) == list
 
-    bboxes = [box for box in bboxes if box[1] > threshold]  # 객체가 존재할 확률이 threshold보다 높은 것들만 사용
-    bboxes = sorted(bboxes, key=lambda x: x[1], reverse=True)  # 정렬
+    bboxes = [box for box in bboxes if box[1] > threshold]  # 객체가 존재할 확률(confidence)이 threshold보다 높은 것들만 사용
+    bboxes = sorted(bboxes, key=lambda x: x[1], reverse=True)  # confidence 기준으로 박스 정렬
     bboxes_after_nms = []
 
     while bboxes:
-        chosen_box = bboxes.pop(0)  # 첫번째
+        chosen_box = bboxes.pop(0)  # 가장 높은 확률 가진 box를 chosen_box로 선택, pop함
 
         bboxes = [
             box
@@ -85,44 +85,41 @@ def non_max_suppression(bboxes, iou_threshold, threshold, box_format="corners"):
                < iou_threshold  # iou_threshold보다 작은 것 남겨둔다 -> 겹치는 부분이 적은 것은 남겨둔다.
         ]
 
-        bboxes_after_nms.append(chosen_box)  # 남길 것 append
+        bboxes_after_nms.append(chosen_box)  # 남길 것 append - NMS 적용 후 살아남은 박스들 담음
 
-    return bboxes_after_nms
+    return bboxes_after_nms     # 중복 제거된 bounding box 리스트 반환
 
 
-def mean_average_precision(
-        pred_boxes, true_boxes, iou_threshold=0.5, box_format="midpoint", num_classes=20
-):
+def mean_average_precision(pred_boxes, true_boxes, iou_threshold=0.5, box_format="midpoint", num_classes=20):
     """
-    Calculates mean average precision
+    mAP 계산
     Parameters:
-        pred_boxes (list): list of lists containing all bboxes with each bboxes
-        specified as [train_idx, class_prediction, prob_score, x1, y1, x2, y2]
-        true_boxes (list): Similar as pred_boxes except all the correct ones
-        iou_threshold (float): threshold where predicted bboxes is correct
-        box_format (str): "midpoint" or "corners" used to specify bboxes
-        num_classes (int): number of classes
+        pred_boxes (list): 예측된 바운딩 박스 리스트. 각 bounding box 형식: [train_idx(이미지번호), class_prediction(예측클래스), prob_score(확률점수), x1, y1, x2, y2]
+        true_boxes (list): 실제 정답 바운딩 박스 리스트
+        iou_threshold (float)
+        box_format (str): 바운딩 박스 좌표 형식 (midpoint 혹은 corners)
+        num_classes (int): 클래스 수(VOC 20개)
     Returns:
         float: mAP value across all classes given a specific IoU threshold
     """
 
-    # list storing all AP for respective classes
+    # 클래스별 AP를 저장할 리스트
     average_precisions = []
 
-    # used for numerical stability later on
+    # 수치적으로 안정성을 확보하기 위한 값
     epsilon = 1e-6
 
+    # 각 클래스별로 AP (Average Precision)을 계산
     for c in range(num_classes):
-        detections = []
-        ground_truths = []
+        detections = []     # 현재 클래스 c에 해당하는 예측 바운딩 박스 리스트 만들기
+        ground_truths = []  # 현재 클래스 c에 해당하는 실제 바운딩 박스 리스트 만들기
 
-        # Go through all predictions and targets,
-        # and only add the ones that belong to the
-        # current class c
+        # 예측 박스와 실제 박스를 클래스별로 필터링
+        # 예측 박스들에서 현재 클래스 c에 해당하는 것들만 필터링
         for detection in pred_boxes:
             if detection[1] == c:
                 detections.append(detection)
-
+        # 실제 박스들에서 현재 클래스 c에 해당하는 것들만 필터링
         for true_box in true_boxes:
             if true_box[1] == c:
                 ground_truths.append(true_box)
@@ -132,24 +129,28 @@ def mean_average_precision(
         # for each training example, so let's say img 0 has 3,
         # img 1 has 5 then we will obtain a dictionary with:
         # amount_bboxes = {0:3, 1:5}
+        # 이미지별 실제 객체(ground truth) 수 계산 - 중복 탐지를 피하기 위해 사용함
         amount_bboxes = Counter([gt[0] for gt in ground_truths])
-
         # We then go through each key, val in this dictionary
         # and convert to the following (w.r.t same example):
-        # ammount_bboxes = {0:torch.tensor[0,0,0], 1:torch.tensor[0,0,0,0,0]}
+        # ammount_bboxes = {0:torch.tensor[0,0,0]바운딩박스 3개, 1:torch.tensor[0,0,0,0,0] 바운딩박스 5개}
+        #
         for key, val in amount_bboxes.items():
-            amount_bboxes[key] = torch.zeros(val)
+            amount_bboxes[key] = torch.zeros(val)   # 해당 이미지에서 ground truth 객체 수만큼 0으로 채워진 텐서 생성
+            # 0: 객체 아직 탐지되지 않음 -> 1: 객체 탐지된 경우. 이렇게 바꿔서 중복처리 방지함
 
+        # 예측 박스를 확률에 따라 내림차순으로 정렬 - 확률 있는 인덱스가 [2]
         # sort by box probabilities which is index 2
         detections.sort(key=lambda x: x[2], reverse=True)
         TP = torch.zeros((len(detections)))
         FP = torch.zeros((len(detections)))
         total_true_bboxes = len(ground_truths)
 
-        # If none exists for this class then we can safely skip
+        # 해당 c 클래스의 ground truth 없으면 그냥 넘어감 - AP 계산 필요없음
         if total_true_bboxes == 0:
             continue
 
+        # 각 예측 박스에 대해 동일한 이미지의 ground truth 가져오기
         for detection_idx, detection in enumerate(detections):
             # Only take out the ground_truths that have the same
             # training idx as detection
@@ -160,6 +161,7 @@ def mean_average_precision(
             num_gts = len(ground_truth_img)
             best_iou = 0
 
+            # 각 ground truth와 예측 박스 사이의 IoU 계산
             for idx, gt in enumerate(ground_truth_img):
                 iou = intersection_over_union(
                     torch.tensor(detection[3:]),
@@ -171,30 +173,58 @@ def mean_average_precision(
                     best_iou = iou
                     best_gt_idx = idx
 
+            # iou 임계값에 따른 TP, FP 결정
+            # iou가 임계값보다 크면,
             if best_iou > iou_threshold:
-                # only detect ground truth detection once
+                # TP로 간주 (처음 객체 탐지의 건)
                 if amount_bboxes[detection[0]][best_gt_idx] == 0:
-                    # true positive and add this bounding box to seen
-                    TP[detection_idx] = 1
-                    amount_bboxes[detection[0]][best_gt_idx] = 1
+                    TP[detection_idx] = 1   # TP로 처리
+                    amount_bboxes[detection[0]][best_gt_idx] = 1    # 탐지 완료 표시 (중복탐지 방지)
+                # 이미 객체 탐지된 경우 중복으로 보고 FP로 처리
                 else:
                     FP[detection_idx] = 1
 
-            # if IOU is lower then the detection is a false positive
+            # iou가 임계값보다 작으면 FP
             else:
                 FP[detection_idx] = 1
-
+        # 누적 TP와 FP계산 -> Recall과 Precision 계산
         TP_cumsum = torch.cumsum(TP, dim=0)
         FP_cumsum = torch.cumsum(FP, dim=0)
-        recalls = TP_cumsum / (total_true_bboxes + epsilon)
-        precisions = torch.divide(TP_cumsum, (TP_cumsum + FP_cumsum + epsilon))
+        recalls = TP_cumsum / (total_true_bboxes + epsilon) # 예측한 것 중 옳은 것
+        precisions = torch.divide(TP_cumsum, (TP_cumsum + FP_cumsum + epsilon)) # ground truth 중 옳은 것
+        # Precision과 Recall 값에 torch.cat()을 사용하여 초기 값(Recall=0, Precision=1)을 추가
+        # 이는 PR 곡선을 0부터 시작하게 만들어 AP 계산 시 정확한 결과를 얻기 위함
         precisions = torch.cat((torch.tensor([1]), precisions))
         recalls = torch.cat((torch.tensor([0]), recalls))
-        # torch.trapz for numerical integration
+        # torch.trapz 사용하여 PR 곡선 아래 면적 (=AP) 구함
         average_precisions.append(torch.trapz(precisions, recalls))
 
-    return sum(average_precisions) / len(average_precisions)
+    return sum(average_precisions) / len(average_precisions)    # 평균내서 mAP 최종 계산
 
+
+class_dict = {
+    0: '__background__',
+    1: 'aeroplane',
+    2: 'bicycle',
+    3: 'bird',
+    4: 'boat',
+    5: 'bottle',
+    6: 'bus',
+    7: 'car',
+    8: 'cat',
+    9: 'chair',
+    10: 'cow',
+    11: 'diningtable',
+    12: 'dog',
+    13: 'horse',
+    14: 'motorbike',
+    15: 'person',
+    16: 'pottedplant',
+    17: 'sheep',
+    18: 'sofa',
+    19: 'train',
+    20: 'tvmonitor',
+}
 
 def plot_image(image, boxes):
     """Plots predicted bounding boxes on the image"""
@@ -203,18 +233,25 @@ def plot_image(image, boxes):
 
     # Create figure and axes
     fig, ax = plt.subplots(1)
-    # Display the image
+    # 이미지 데이터를 Axes 객체에 추가, 그려지는 준비
     ax.imshow(im)
+
+    annotations = []       # 박스 정보 기록용 리스트
 
     # box[0] is x midpoint, box[2] is width
     # box[1] is y midpoint, box[3] is height
 
     # Create a Rectangle potch
     for box in boxes:
+        class_num = int(box[0])  # 클래스 번호
+        class_name = class_dict.get(class_num, "Unknown")  # 클래스 이름 가져오기
+        confidence = box[1]
+
         box = box[2:]
         assert len(box) == 4, "Got more values than in x, y, w, h, in a box!"
         upper_left_x = box[0] - box[2] / 2
         upper_left_y = box[1] - box[3] / 2
+
         rect = patches.Rectangle(
             (upper_left_x * width, upper_left_y * height),
             box[2] * width,
@@ -226,36 +263,55 @@ def plot_image(image, boxes):
         # Add the patch to the Axes
         ax.add_patch(rect)
 
+        # 주석에 클래스 이름과 좌표 정보 추가
+        annotations.append(f"Class: {class_name}, Confidence: {confidence}, Box: {box}")
+
+    # NMS 결과 및 클래스 이름을 하단에 텍스트로 추가
+    annotation_text = "\n".join(annotations)
+    # 텍스트가 너무 길어지지 않도록 줄바꿈 적용
+    wrapped_text = "\n".join(textwrap.wrap(annotation_text, width=70))
+    plt.text(
+        0.5, -0.15, wrapped_text,
+        ha='center',
+        va='top',
+        transform=ax.transAxes,
+        fontsize=9,
+        bbox=dict(facecolor='white', alpha=0.7)
+    )
+    plt.subplots_adjust(bottom=0.3) # 하단 여백
+
     plt.show()
 
-
-def get_bboxes(
+def get_bboxes(     # DataLoader에서 모델 사용하여 bounding box 예측 -> 예측 박스와 실제 박스 정리하여 반환하는 함수
         loader,
         model,
-        iou_threshold,
-        threshold,
-        pred_format="cells",
-        box_format="midpoint",
+        iou_threshold,  # NMS 임계값
+        threshold,      # confidence 임계값
+        pred_format="cells",    # 예측 박스 형식
+        box_format="midpoint",  # 바운딩박스 좌표 형식
         device="cuda",
 ):
+    # 예측박스, 실제박스 저장할 리스트 초기화
     all_pred_boxes = []
     all_true_boxes = []
 
-    # make sure model is in eval before get bboxes
+    # 모델 평가 모드로 전환, train_idx로 훈련 인덱스 추적
     model.eval()
     train_idx = 0
 
+    # 배치 단위 학습
     for batch_idx, (x, labels) in enumerate(loader):
         x = x.to(device)
         labels = labels.to(device)
 
         with torch.no_grad():
-            predictions = model(x)
+            predictions = model(x)  # 예측 진행
 
-        batch_size = x.shape[0]
-        true_bboxes = cellboxes_to_boxes(labels)
+        batch_size = x.shape[0] # 현재 배치 크기 가져옴
+        true_bboxes = cellboxes_to_boxes(labels)    # 실제 레이블과 모델 예측결과를 bounding box 형태로 변환하는 함수 호출
         bboxes = cellboxes_to_boxes(predictions)
 
+        # NMS 수행 및 박스 저장
         for idx in range(batch_size):
             nms_boxes = non_max_suppression(
                 bboxes[idx],
@@ -264,10 +320,11 @@ def get_bboxes(
                 box_format=box_format,
             )
 
-            # if batch_idx == 0 and idx == 0:
-            #    plot_image(x[idx].permute(1,2,0).to("cpu"), nms_boxes)
-            #    print(nms_boxes)
+            if batch_idx == 0 and idx == 0:
+                plot_image(x[idx].permute(1,2,0).to("cpu"), nms_boxes)
+                # print(f"nms_boxes : {nms_boxes}")
 
+            # 예측 박스 및 실제 박스 저장
             for nms_box in nms_boxes:
                 all_pred_boxes.append([train_idx] + nms_box)
 
@@ -276,10 +333,12 @@ def get_bboxes(
                 if box[1] > threshold:
                     all_true_boxes.append([train_idx] + box)
 
-            train_idx += 1
+            train_idx += 1  # 배치 끝날때마다 train_idx 증가
 
+    num_pred_boxes = len(all_pred_boxes)
+    num_true_boxes = len(all_true_boxes)
     model.train()
-    return all_pred_boxes, all_true_boxes
+    return all_pred_boxes, all_true_boxes, num_pred_boxes, num_true_boxes
 
 
 def convert_cellboxes(predictions, S=7):
