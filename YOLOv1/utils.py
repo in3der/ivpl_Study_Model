@@ -203,55 +203,48 @@ def mean_average_precision(pred_boxes, true_boxes, iou_threshold=0.5, box_format
 
 
 class_dict = {
-    0: '__background__',
-    1: 'aeroplane',
-    2: 'bicycle',
-    3: 'bird',
-    4: 'boat',
-    5: 'bottle',
-    6: 'bus',
-    7: 'car',
-    8: 'cat',
-    9: 'chair',
-    10: 'cow',
-    11: 'diningtable',
-    12: 'dog',
-    13: 'horse',
-    14: 'motorbike',
-    15: 'person',
-    16: 'pottedplant',
-    17: 'sheep',
-    18: 'sofa',
-    19: 'train',
-    20: 'tvmonitor',
+    0: 'aeroplane',
+    1: 'bicycle',
+    2: 'bird',
+    3: 'boat',
+    4: 'bottle',
+    5: 'bus',
+    6: 'car',
+    7: 'cat',
+    8: 'chair',
+    9: 'cow',
+    10: 'diningtable',
+    11: 'dog',
+    12: 'horse',
+    13: 'motorbike',
+    14: 'person',
+    15: 'pottedplant',
+    16: 'sheep',
+    17: 'sofa',
+    18: 'train',
+    19: 'tvmonitor',
 }
 
-def plot_image(image, boxes):
-    """Plots predicted bounding boxes on the image"""
+def plot_image(image, boxes, epoch):
+    """Plots predicted bounding boxes on the image with class and confidence labels."""
     im = np.array(image)
     height, width, _ = im.shape
 
     # Create figure and axes
     fig, ax = plt.subplots(1)
-    # 이미지 데이터를 Axes 객체에 추가, 그려지는 준비
     ax.imshow(im)
 
-    annotations = []       # 박스 정보 기록용 리스트
-
-    # box[0] is x midpoint, box[2] is width
-    # box[1] is y midpoint, box[3] is height
-
-    # Create a Rectangle potch
     for box in boxes:
         class_num = int(box[0])  # 클래스 번호
         class_name = class_dict.get(class_num, "Unknown")  # 클래스 이름 가져오기
         confidence = box[1]
 
         box = box[2:]
-        assert len(box) == 4, "Got more values than in x, y, w, h, in a box!"
+        assert len(box) == 4, "Got more values than expected in box!"
         upper_left_x = box[0] - box[2] / 2
         upper_left_y = box[1] - box[3] / 2
 
+        # Draw rectangle for the bounding box
         rect = patches.Rectangle(
             (upper_left_x * width, upper_left_y * height),
             box[2] * width,
@@ -260,33 +253,31 @@ def plot_image(image, boxes):
             edgecolor="r",
             facecolor="none",
         )
-        # Add the patch to the Axes
         ax.add_patch(rect)
 
-        # 주석에 클래스 이름과 좌표 정보 추가
-        annotations.append(f"Class: {class_name}, Confidence: {confidence}, Box: {box}")
-
-    # NMS 결과 및 클래스 이름을 하단에 텍스트로 추가
-    annotation_text = "\n".join(annotations)
-    # 텍스트가 너무 길어지지 않도록 줄바꿈 적용
-    wrapped_text = "\n".join(textwrap.wrap(annotation_text, width=70))
-    plt.text(
-        0.5, -0.15, wrapped_text,
-        ha='center',
-        va='top',
-        transform=ax.transAxes,
-        fontsize=9,
-        bbox=dict(facecolor='white', alpha=0.7)
-    )
-    plt.subplots_adjust(bottom=0.3) # 하단 여백
-
-    plt.show()
+        # Add class name and confidence score to the top-left corner of each bounding box
+        confidence_f = format(confidence, ".2f")
+        annotation = f"{class_name}: {confidence_f}"
+        ax.text(
+            upper_left_x * width, upper_left_y * height,
+            annotation,
+            verticalalignment='top',
+            color="white",
+            fontsize=7,
+            bbox=dict(facecolor="red", alpha=0.5, pad=0.5)
+        )
+    # 그냥 봄
+    # plt.show()
+    # 저장용
+    plt.savefig(f"output_epoch_{epoch}.png", bbox_inches="tight", pad_inches=0.2)
+    plt.close(fig)
 
 def get_bboxes(     # DataLoader에서 모델 사용하여 bounding box 예측 -> 예측 박스와 실제 박스 정리하여 반환하는 함수
         loader,
         model,
         iou_threshold,  # NMS 임계값
         threshold,      # confidence 임계값
+        epoch,
         pred_format="cells",    # 예측 박스 형식
         box_format="midpoint",  # 바운딩박스 좌표 형식
         device="cuda",
@@ -321,7 +312,7 @@ def get_bboxes(     # DataLoader에서 모델 사용하여 bounding box 예측 -
             )
 
             if batch_idx == 0 and idx == 0:
-                plot_image(x[idx].permute(1,2,0).to("cpu"), nms_boxes)
+                plot_image(x[idx].permute(1,2,0).to("cpu"), nms_boxes, epoch)
                 # print(f"nms_boxes : {nms_boxes}")
 
             # 예측 박스 및 실제 박스 저장
