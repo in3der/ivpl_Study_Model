@@ -40,6 +40,7 @@ SAVE_MODEL_PATH = "/home/ivpl-d29/myProject/Study_Model/YOLOv1/logs/model/detect
 TRACK_IMAGE_IDX = 0  # 첫 번째 배치의 첫 번째 이미지
 
 EPOCHS = 135
+epoch = 135
 
 # 모델, 체크포인트 불러오기
 model = YOLOv1().to(DEVICE)
@@ -48,7 +49,6 @@ optimizer = optim.Adam(model.parameters(), lr=2e-5, weight_decay=0)
 
 def load_checkpoint(checkpoint, model, optimizer):
     print("=> 체크포인트 조회")
-    # model.load_state_dict(checkpoint["model_state_dict"], strict=False)
     # state_dict 로드
     load_info = model.load_state_dict(checkpoint["model_state_dict"], strict=False)
 
@@ -196,8 +196,8 @@ writer.close()
 # Test
 test_fn(test_loader, model, loss_fn)
 
-test_pred_boxes, test_target_boxes, test_num_pred_boxes, test_num_true_boxes = get_bboxes(test_loader, model, iou_threshold=0.4, threshold=0.2)
+test_pred_boxes, test_target_boxes, test_num_pred_boxes, test_num_true_boxes = get_bboxes(test_loader, model, iou_threshold=0.5, threshold=0.4, epoch=epoch)
 print(f"Test 예측 박스 개수: {test_num_pred_boxes}, Test 실제 박스 개수: {test_num_true_boxes}")
-test_mean_avg_prec = mean_average_precision(test_pred_boxes, test_target_boxes, iou_threshold=0.4, box_format="midpoint")
+test_mean_avg_prec = mean_average_precision(test_pred_boxes, test_target_boxes, iou_threshold=0.5, box_format="midpoint")
 print(f"Test mAP : {test_mean_avg_prec}")
 
